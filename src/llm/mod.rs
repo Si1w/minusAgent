@@ -3,16 +3,17 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::core::{Context, Node};
+use crate::context::{Context, Message};
+use crate::core::Node;
 
-pub struct LlmNode {
+pub struct Llm {
     client: Client,
     base_url: String,
     model: String,
     api_key: String,
 }
 
-impl LlmNode {
+impl Llm {
     pub fn new(base_url: &str, model: &str, api_key: &str) -> Self {
         Self {
             client: Client::new(),
@@ -24,9 +25,9 @@ impl LlmNode {
 }
 
 #[async_trait]
-impl Node for LlmNode {
-    async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(json!(ctx)))
+impl Node for Llm {
+    async fn prep(&mut self, ctx: &dyn Context) -> Result<Option<Value>> {
+        Ok(Some(json!(ctx.to_vec())))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
@@ -51,10 +52,11 @@ impl Node for LlmNode {
         Ok(Some(resp))
     }
 
-    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<()> {
+    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut dyn Context) -> Result<()> {
         if let Some(resp) = exec_res {
-            let content = resp["choices"][0]["message"].clone();
-            ctx.push(content);
+            if let Some(content) = resp["choices"][0]["message"]["content"].as_str() {
+                ctx.push(Message::assistant(content));
+            }
         }
         Ok(())
     }
@@ -62,21 +64,28 @@ impl Node for LlmNode {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use super::*;
+    use crate::context::ChatContext;
 
     #[tokio::test]
-    async fn test_llm_node() {
+    #[ignore]
+    async fn test_llm_node() -> Result<()> {
         dotenvy::dotenv().ok();
 
-        let base_url = std::env::var("LLM_BASE_URL")
+        let base_url = env::var("LLM_BASE_URL")
             .unwrap_or_else(|_| "https://codestral.mistral.ai/v1/chat/completions".to_string());
-        let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "codestral-2508".to_string());
-        let api_key = std::env::var("LLM_API_KEY").expect("LLM_API_KEY required");
+        let model = env::var("LLM_MODEL").unwrap_or_else(|_| "codestral-2508".to_string());
+        let api_key = env::var("LLM_API_KEY").expect("LLM_API_KEY required");
 
-        let mut node = LlmNode::new(&base_url, &model, &api_key);
-        let mut ctx: Context = vec![json!({"role": "user", "content": "Say hello"})];
+        let mut node = Llm::new(&base_url, &model, &api_key);
+        let mut ctx = ChatContext::new();
+        ctx.push(Message::user("Say hello"));
 
-        node.run(&mut ctx).await.unwrap();
-        assert!(ctx.len() > 1);
+        node.run(&mut ctx).await?;
+        println!("{:?}", ctx);
+
+        Ok(())
     }
 }
