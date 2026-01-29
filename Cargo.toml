@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.100"
 async-trait = "0.1"
 reqwest = { version = "0.13.1", features = ["json"] }
 serde_json = "1.0.149"

@@ -1,15 +1,15 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::core::{Context, Node, Result, Status};
+use crate::core::{Context, Node};
 
 pub struct LlmNode {
     client: Client,
     base_url: String,
     model: String,
     api_key: String,
-    response: Option<Value>,
 }
 
 impl LlmNode {
@@ -19,25 +19,22 @@ impl LlmNode {
             base_url: base_url.to_string(),
             model: model.to_string(),
             api_key: api_key.to_string(),
-            response: None,
         }
     }
 }
 
 #[async_trait]
 impl Node for LlmNode {
-    async fn prep(&mut self, _ctx: &Context) -> Result {
-        Result {
-            status: Status::Success,
-            value: None,
-            error: None,
-        }
+    async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
+        Ok(Some(json!(ctx)))
     }
 
-    async fn exec(&mut self, ctx: &Context) -> Result {
+    async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
+        let messages = prep_res.ok_or_else(|| anyhow::anyhow!("No messages provided"))?;
+
         let body = json!({
             "model": self.model,
-            "messages": ctx
+            "messages": messages
         });
 
         let resp = self
@@ -47,48 +44,19 @@ impl Node for LlmNode {
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
-            .await;
+            .await?
+            .json::<Value>()
+            .await?;
 
-        match resp {
-            Ok(r) => match r.json::<Value>().await {
-                Ok(json) => {
-                    self.response = Some(json);
-                    Result {
-                        status: Status::Success,
-                        value: None,
-                        error: None,
-                    }
-                }
-                Err(e) => Result {
-                    status: Status::Failed,
-                    value: None,
-                    error: Some(e.to_string()),
-                },
-            },
-            Err(e) => Result {
-                status: Status::Failed,
-                value: None,
-                error: Some(e.to_string()),
-            },
-        }
+        Ok(Some(resp))
     }
 
-    async fn post(&mut self, ctx: &mut Context) -> Result {
-        if let Some(resp) = self.response.take() {
+    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<()> {
+        if let Some(resp) = exec_res {
             let content = resp["choices"][0]["message"].clone();
             ctx.push(content);
-            Result {
-                status: Status::Success,
-                value: Some(resp),
-                error: None,
-            }
-        } else {
-            Result {
-                status: Status::Failed,
-                value: None,
-                error: Some("No response".to_string()),
-            }
         }
+        Ok(())
     }
 }
 
@@ -108,10 +76,7 @@ mod tests {
         let mut node = LlmNode::new(&base_url, &model, &api_key);
         let mut ctx: Context = vec![json!({"role": "user", "content": "Say hello"})];
 
-        let result = node.run(&mut ctx).await;
-
-        assert_eq!(result.status, Status::Success);
+        node.run(&mut ctx).await.unwrap();
         assert!(ctx.len() > 1);
-        println!("Response: {:?}", ctx.last());
     }
 }
