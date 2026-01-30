@@ -5,14 +5,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use serde_json::Value;
-use serde_yaml::from_str as from_yaml;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::context::{ChatContext, Context, Message};
+use crate::context::{Context, Message};
 use crate::core::Node;
-use crate::cot::{ChainOfThought, Execute, Plan};
+use crate::cot::{ChainOfThought, PlanNode, ThinkingNode};
 use crate::llm::Llm;
 
 #[derive(Parser)]
@@ -30,6 +28,8 @@ pub enum Commands {
     },
     Cot {
         text: String,
+        #[arg(long)]
+        max_turns: Option<usize>,
     },
     Interactive,
 }
@@ -70,34 +70,20 @@ async fn stop_thinking(running: Arc<AtomicBool>, handle: JoinHandle<()>) {
     let _ = handle.await;
 }
 
-fn parse_final(content: &str) -> String {
-    let yaml_str = if let Some(start) = content.find("```yaml") {
-        let start = start + 7;
-        let end = content[start..].find("```").map(|i| start + i).unwrap_or(content.len());
-        &content[start..end]
-    } else {
-        content
-    };
-    from_yaml::<Value>(yaml_str.trim())
-        .ok()
-        .and_then(|v| v["final"].as_str().map(String::from))
-        .unwrap_or_else(|| content.to_string())
-}
-
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Prompt { text } => prompt(&text).await,
-        Commands::Cot { text } => cot(&text).await,
+        Commands::Cot { text, max_turns } => cot(&text, max_turns).await,
         Commands::Interactive => interactive().await,
     }
 }
 
 async fn prompt(text: &str) -> Result<()> {
     let mut llm = create_llm()?;
-    let mut ctx = ChatContext::new();
-    ctx.push(Message::user(text));
+    let mut ctx = Context::new();
+    ctx.push_history(Message::user(text));
 
     let (running, handle) = start_thinking();
     llm.run(&mut ctx).await?;
@@ -110,30 +96,34 @@ async fn prompt(text: &str) -> Result<()> {
     Ok(())
 }
 
-async fn cot(text: &str) -> Result<()> {
-    let llm1 = create_llm()?;
-    let llm2 = create_llm()?;
-    let plan = Plan::new(llm1);
-    let execute = Execute::new(llm2);
-    let mut cot = ChainOfThought::new(plan, execute);
+async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
+    let llm = create_llm()?;
+    let plan_node = PlanNode::new(llm.clone());
+    let thinking_node = ThinkingNode::new(llm);
+    let mut cot = ChainOfThought::new(plan_node, thinking_node);
+    if let Some(n) = max_turns {
+        cot = cot.with_max_turns(n);
+    }
 
-    let mut ctx = ChatContext::new();
-    ctx.push(Message::user(text));
+    let mut ctx = Context::new();
+    ctx.set_user_message(text);
 
     let (running, handle) = start_thinking();
     cot.run(&mut ctx).await?;
     stop_thinking(running, handle).await;
 
-    if let Some(content) = ctx.last_content() {
-        println!("{}", parse_final(content));
-    }
+    let output = ctx.last_content()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
+        .and_then(|v| v["answer"].as_str().map(String::from))
+        .unwrap_or_default();
+    println!("{}", &output);
 
     Ok(())
 }
 
 async fn interactive() -> Result<()> {
     let mut llm = create_llm()?;
-    let mut ctx = ChatContext::new();
+    let mut ctx = Context::new();
 
     println!("Interactive mode. Type 'exit' to quit.\n");
 
@@ -153,7 +143,7 @@ async fn interactive() -> Result<()> {
             continue;
         }
 
-        ctx.push(Message::user(input));
+        ctx.push_history(Message::user(input));
 
         let (running, handle) = start_thinking();
         llm.run(&mut ctx).await?;

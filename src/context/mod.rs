@@ -1,57 +1,23 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// A context window for LLM calls, composed of:
+/// {SysPrompt, Document, Memory, Tools, UserMessage, MessageHistory}
 #[derive(Debug, Clone, Default)]
-pub struct ChatContext {
-    messages: Vec<Message>,
-    action: Action,
+pub struct Context {
+    pub system_prompt: Option<String>,
+    pub documents: Vec<String>,
+    pub memory: Vec<String>,
+    pub tools: Vec<Tool>,
+    pub user_message: Option<String>,
+    pub history: Vec<Message>,
+    pub action: Action,
 }
 
-impl ChatContext {
-    pub fn new() -> Self {
-        Self {
-            messages: Vec::new(),
-            action: Action::default(),
-        }
-    }
-
-    pub fn with_system(content: impl Into<String>) -> Self {
-        Self {
-            messages: vec![Message::system(content)],
-            action: Action::default(),
-        }
-    }
-}
-
-impl Context for ChatContext {
-    fn messages(&self) -> &[Message] {
-        &self.messages
-    }
-
-    fn push(&mut self, msg: Message) {
-        self.messages.push(msg);
-    }
-
-    fn extend(&mut self, msgs: Vec<Message>) {
-        self.messages.extend(msgs);
-    }
-
-    fn action(&self) -> &Action {
-        &self.action
-    }
-
-    fn set_action(&mut self, action: Action) {
-        self.action = action;
-    }
-}
-
-impl From<Vec<Message>> for ChatContext {
-    fn from(messages: Vec<Message>) -> Self {
-        Self {
-            messages,
-            action: Action::default(),
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -67,47 +33,93 @@ pub enum Role {
 pub struct Message {
     pub role: Role,
     pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
+        self.system_prompt = Some(prompt.into());
+    }
+
+    pub fn add_document(&mut self, doc: impl Into<String>) {
+        self.documents.push(doc.into());
+    }
+
+    pub fn add_memory(&mut self, mem: impl Into<String>) {
+        self.memory.push(mem.into());
+    }
+
+    pub fn add_tool(&mut self, name: impl Into<String>, description: impl Into<String>) {
+        self.tools.push(Tool { name: name.into(), description: description.into() });
+    }
+
+    pub fn set_user_message(&mut self, msg: impl Into<String>) {
+        self.user_message = Some(msg.into());
+    }
+
+    pub fn push_history(&mut self, msg: Message) {
+        self.history.push(msg);
+    }
+
+    pub fn last_content(&self) -> Option<&str> {
+        self.history.last().map(|m| m.content.as_str())
+    }
+
+    pub fn commit_user_message(&mut self) {
+        if let Some(msg) = self.user_message.take() {
+            self.history.push(Message::user(msg));
+        }
+    }
+
+    pub fn to_messages(&self) -> Vec<Value> {
+        let mut msgs = Vec::new();
+
+        let mut system_parts = Vec::new();
+        if let Some(ref prompt) = self.system_prompt {
+            system_parts.push(prompt.clone());
+        }
+        if !self.documents.is_empty() {
+            system_parts.push(format!("\n## Documents\n{}", self.documents.join("\n")));
+        }
+        if !self.memory.is_empty() {
+            system_parts.push(format!("\n## Memory\n{}", self.memory.join("\n")));
+        }
+        if !self.tools.is_empty() {
+            let tools_str: Vec<String> = self.tools.iter()
+                .map(|t| format!("- {}: {}", t.name, t.description))
+                .collect();
+            system_parts.push(format!("\n## Tools\n{}", tools_str.join("\n")));
+        }
+        if !system_parts.is_empty() {
+            msgs.push(json!(Message::system(system_parts.join("\n"))));
+        }
+
+        for msg in &self.history {
+            msgs.push(json!(msg));
+        }
+
+        if let Some(ref user_msg) = self.user_message {
+            msgs.push(json!(Message::user(user_msg)));
+        }
+
+        msgs
+    }
 }
 
 impl Message {
     pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::System,
-            content: content.into(),
-            name: None,
-            tool_call_id: None,
-        }
+        Self { role: Role::System, content: content.into() }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::User,
-            content: content.into(),
-            name: None,
-            tool_call_id: None,
-        }
+        Self { role: Role::User, content: content.into() }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content: content.into(),
-            name: None,
-            tool_call_id: None,
-        }
-    }
-
-    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Tool,
-            content: content.into(),
-            name: None,
-            tool_call_id: Some(tool_call_id.into()),
-        }
+        Self { role: Role::Assistant, content: content.into() }
     }
 }
 
@@ -117,37 +129,12 @@ impl From<Message> for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Action {
+    #[default]
     Continue,
     Stop,
     CallTool(String),
-}
-
-impl Default for Action {
-    fn default() -> Self {
-        Action::Continue
-    }
-}
-
-pub trait Context: Send + Sync {
-    fn messages(&self) -> &[Message];
-    fn push(&mut self, msg: Message);
-    fn extend(&mut self, msgs: Vec<Message>);
-    fn action(&self) -> &Action;
-    fn set_action(&mut self, action: Action);
-
-    fn last(&self) -> Option<&Message> {
-        self.messages().last()
-    }
-
-    fn last_content(&self) -> Option<&str> {
-        self.last().map(|m| m.content.as_str())
-    }
-
-    fn to_vec(&self) -> Vec<Value> {
-        self.messages().iter().map(|m| json!(m)).collect()
-    }
 }
 
 #[cfg(test)]
@@ -155,12 +142,92 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_context_window_new() {
+        let ctx = Context::new();
+        assert!(ctx.history.is_empty());
+        assert!(ctx.system_prompt.is_none());
+        assert!(ctx.documents.is_empty());
+        assert!(ctx.memory.is_empty());
+        assert!(ctx.tools.is_empty());
+        assert!(ctx.user_message.is_none());
+    }
+
+    #[test]
+    fn test_context_window_set_components() {
+        let mut ctx = Context::new();
+        ctx.set_system_prompt("You are helpful");
+        ctx.add_document("doc1");
+        ctx.add_memory("remember this");
+        ctx.add_tool("search", "search the web");
+        ctx.set_user_message("hello");
+
+        assert_eq!(ctx.system_prompt.as_deref(), Some("You are helpful"));
+        assert_eq!(ctx.documents.len(), 1);
+        assert_eq!(ctx.memory.len(), 1);
+        assert_eq!(ctx.tools.len(), 1);
+        assert_eq!(ctx.user_message.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn test_context_window_to_messages_full() {
+        let mut ctx = Context::new();
+        ctx.set_system_prompt("You are helpful");
+        ctx.add_document("reference doc");
+        ctx.add_memory("user prefers short answers");
+        ctx.add_tool("search", "search the web");
+        ctx.push_history(Message::user("old question"));
+        ctx.push_history(Message::assistant("old answer"));
+        ctx.set_user_message("new question");
+
+        let msgs = ctx.to_messages();
+        assert_eq!(msgs.len(), 4); // system, user(old), assistant(old), user(new)
+        assert_eq!(msgs[0]["role"], "system");
+        assert!(msgs[0]["content"].as_str().unwrap().contains("You are helpful"));
+        assert!(msgs[0]["content"].as_str().unwrap().contains("reference doc"));
+        assert!(msgs[0]["content"].as_str().unwrap().contains("user prefers short answers"));
+        assert!(msgs[0]["content"].as_str().unwrap().contains("search"));
+        assert_eq!(msgs[1]["content"], "old question");
+        assert_eq!(msgs[2]["content"], "old answer");
+        assert_eq!(msgs[3]["content"], "new question");
+    }
+
+    #[test]
+    fn test_context_window_to_messages_minimal() {
+        let mut ctx = Context::new();
+        ctx.set_user_message("hello");
+
+        let msgs = ctx.to_messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[0]["content"], "hello");
+    }
+
+    #[test]
+    fn test_commit_user_message() {
+        let mut ctx = Context::new();
+        ctx.set_user_message("question");
+        assert!(ctx.user_message.is_some());
+        assert!(ctx.history.is_empty());
+
+        ctx.commit_user_message();
+        assert!(ctx.user_message.is_none());
+        assert_eq!(ctx.history.len(), 1);
+        assert_eq!(ctx.history[0].content, "question");
+        assert_eq!(ctx.history[0].role, Role::User);
+    }
+
+    #[test]
+    fn test_push_history_and_last() {
+        let mut ctx = Context::new();
+        ctx.push_history(Message::assistant("response"));
+        assert_eq!(ctx.last_content(), Some("response"));
+    }
+
+    #[test]
     fn test_message_system() {
         let msg = Message::system("You are helpful");
         assert_eq!(msg.role, Role::System);
         assert_eq!(msg.content, "You are helpful");
-        assert!(msg.name.is_none());
-        assert!(msg.tool_call_id.is_none());
     }
 
     #[test]
@@ -178,73 +245,10 @@ mod tests {
     }
 
     #[test]
-    fn test_message_tool() {
-        let msg = Message::tool("call_123", "result data");
-        assert_eq!(msg.role, Role::Tool);
-        assert_eq!(msg.content, "result data");
-        assert_eq!(msg.tool_call_id, Some("call_123".to_string()));
-    }
-
-    #[test]
     fn test_message_to_value() {
         let msg = Message::user("test");
         let value: Value = msg.into();
         assert_eq!(value["role"], "user");
         assert_eq!(value["content"], "test");
-    }
-
-    #[test]
-    fn test_action_default() {
-        let action = Action::default();
-        assert_eq!(action, Action::Continue);
-    }
-
-    #[test]
-    fn test_action_variants() {
-        assert_eq!(Action::Continue, Action::Continue);
-        assert_eq!(Action::Stop, Action::Stop);
-        assert_eq!(Action::CallTool("foo".into()), Action::CallTool("foo".into()));
-        assert_ne!(Action::CallTool("foo".into()), Action::CallTool("bar".into()));
-    }
-
-    #[test]
-    fn test_chat_context_new() {
-        let ctx = ChatContext::new();
-        assert!(ctx.messages().is_empty());
-        assert_eq!(ctx.action(), &Action::Continue);
-    }
-
-    #[test]
-    fn test_chat_context_with_system() {
-        let ctx = ChatContext::with_system("You are helpful");
-        assert_eq!(ctx.messages().len(), 1);
-        assert_eq!(ctx.messages()[0].content, "You are helpful");
-    }
-
-    #[test]
-    fn test_chat_context_from_vec() {
-        let messages = vec![
-            Message::system("System"),
-            Message::user("Hi"),
-        ];
-        let ctx = ChatContext::from(messages);
-        assert_eq!(ctx.messages().len(), 2);
-    }
-
-    #[test]
-    fn test_chat_context_extend() {
-        let mut ctx = ChatContext::with_system("System");
-        ctx.extend(vec![
-            Message::user("Q1"),
-            Message::assistant("A1"),
-        ]);
-        assert_eq!(ctx.messages().len(), 3);
-    }
-
-    #[test]
-    fn test_chat_context_action() {
-        let mut ctx = ChatContext::new();
-        ctx.set_action(Action::CallTool("search".into()));
-        assert_eq!(ctx.action(), &Action::CallTool("search".into()));
     }
 }

@@ -3,9 +3,10 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::context::{Context, Message};
+use crate::context::{Action, Context, Message};
 use crate::core::Node;
 
+#[derive(Clone)]
 pub struct Llm {
     client: Client,
     base_url: String,
@@ -26,8 +27,8 @@ impl Llm {
 
 #[async_trait]
 impl Node for Llm {
-    async fn prep(&mut self, ctx: &dyn Context) -> Result<Option<Value>> {
-        Ok(Some(json!(ctx.to_vec())))
+    async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
+        Ok(Some(json!(ctx.to_messages())))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
@@ -52,13 +53,13 @@ impl Node for Llm {
         Ok(Some(resp))
     }
 
-    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut dyn Context) -> Result<()> {
-        if let Some(resp) = exec_res {
-            if let Some(content) = resp["choices"][0]["message"]["content"].as_str() {
-                ctx.push(Message::assistant(content));
-            }
+    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
+        if let Some(resp) = exec_res
+            && let Some(content) = resp["choices"][0]["message"]["content"].as_str()
+        {
+            ctx.push_history(Message::assistant(content));
         }
-        Ok(())
+        Ok(Action::Continue)
     }
 }
 
@@ -67,7 +68,6 @@ mod tests {
     use std::env;
 
     use super::*;
-    use crate::context::ChatContext;
 
     #[tokio::test]
     #[ignore]
@@ -80,8 +80,8 @@ mod tests {
         let api_key = env::var("LLM_API_KEY").expect("LLM_API_KEY required");
 
         let mut node = Llm::new(&base_url, &model, &api_key);
-        let mut ctx = ChatContext::new();
-        ctx.push(Message::user("Say hello"));
+        let mut ctx = Context::new();
+        ctx.push_history(Message::user("Say hello"));
 
         node.run(&mut ctx).await?;
         println!("{:?}", ctx);
