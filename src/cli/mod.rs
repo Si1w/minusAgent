@@ -28,7 +28,10 @@ pub enum Commands {
         #[arg(long)]
         max_turns: Option<usize>,
     },
-    Interactive,
+    Interactive {
+        #[arg(long)]
+        cot: bool,
+    },
 }
 
 fn create_llm() -> Result<Llm> {
@@ -50,7 +53,7 @@ pub async fn run() -> Result<()> {
     match cli.command {
         Commands::Prompt { text } => prompt(&text).await,
         Commands::Cot { text, max_turns } => cot(&text, max_turns).await,
-        Commands::Interactive => interactive().await,
+        Commands::Interactive { cot } => interactive(cot).await,
     }
 }
 
@@ -90,14 +93,14 @@ async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
         .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
         .and_then(|v| v["answer"].as_str().map(String::from))
         .unwrap_or_default();
-    println!("{}", &output);
+    println!("{}", output);
 
     Ok(())
 }
 
-async fn interactive() -> Result<()> {
+async fn interactive(cot: bool) -> Result<()> {
     let llm = create_llm()?;
     let mut ctx = Context::new();
-    let mut chat = Interactive::new(llm);
+    let mut chat = Interactive::new(llm, cot);
     chat.run(&mut ctx).await
 }

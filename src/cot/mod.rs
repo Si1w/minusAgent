@@ -236,7 +236,8 @@ mod tests {
         ctx.set_user_message("What is 15 + 27?");
         let action = cot.run(&mut ctx).await?;
         assert_eq!(action, Action::Stop);
-
+        println!("# final context: {:?}", ctx);
+        
         let last = ctx.last_content().expect("should have final answer");
         let parsed: Value = serde_json::from_str(last).expect("should be valid JSON");
         let answer = parsed["answer"].as_str().unwrap_or(last);
