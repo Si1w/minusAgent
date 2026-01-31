@@ -1,17 +1,14 @@
 use std::env;
-use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
 
 use crate::context::{Context, Message};
 use crate::core::Node;
 use crate::cot::{ChainOfThought, PlanNode, ThinkingNode};
+use crate::interactive::Interactive;
 use crate::llm::Llm;
+use crate::utils::{start_thinking, stop_thinking};
 
 #[derive(Parser)]
 #[command(name = "minusagent")]
@@ -45,29 +42,6 @@ fn create_llm() -> Result<Llm> {
         .map_err(|_| anyhow::anyhow!("LLM_API_KEY environment variable required"))?;
 
     Ok(Llm::new(&base_url, &model, &api_key))
-}
-
-fn start_thinking() -> (Arc<AtomicBool>, JoinHandle<()>) {
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-    let handle = tokio::spawn(async move {
-        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-        let mut i = 0;
-        while r.load(Ordering::Relaxed) {
-            print!("\r{} Thinking...", frames[i % frames.len()]);
-            io::stdout().flush().ok();
-            sleep(Duration::from_millis(80)).await;
-            i += 1;
-        }
-        print!("\r              \r");
-        io::stdout().flush().ok();
-    });
-    (running, handle)
-}
-
-async fn stop_thinking(running: Arc<AtomicBool>, handle: JoinHandle<()>) {
-    running.store(false, Ordering::Relaxed);
-    let _ = handle.await;
 }
 
 pub async fn run() -> Result<()> {
@@ -122,37 +96,8 @@ async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
 }
 
 async fn interactive() -> Result<()> {
-    let mut llm = create_llm()?;
+    let llm = create_llm()?;
     let mut ctx = Context::new();
-
-    println!("Interactive mode. Type 'exit' to quit.\n");
-
-    loop {
-        print!("> ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let input = input.trim();
-
-        if input == "exit" || input == "quit" {
-            break;
-        }
-
-        if input.is_empty() {
-            continue;
-        }
-
-        ctx.push_history(Message::user(input));
-
-        let (running, handle) = start_thinking();
-        llm.run(&mut ctx).await?;
-        stop_thinking(running, handle).await;
-
-        if let Some(content) = ctx.last_content() {
-            println!("\n{}\n", content);
-        }
-    }
-
-    Ok(())
+    let mut chat = Interactive::new(llm);
+    chat.run(&mut ctx).await
 }
