@@ -28,7 +28,7 @@ impl Llm {
 #[async_trait]
 impl Node for Llm {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(json!(ctx.to_messages())))
+        Ok(Some(ctx.to_prompt()))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {

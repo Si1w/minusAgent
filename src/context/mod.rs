@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// A context window for LLM calls, composed of:
 /// {SysPrompt, UserMessage, MessageHistory, Action}
@@ -46,20 +46,35 @@ impl Context {
         self.history.last().map(|m| &m.content)
     }
 
-    pub fn to_messages(&self) -> Vec<Message> {
-        let mut msgs = Vec::new();
+    pub fn to_prompt(&self) -> Value {
+        let mut content = Vec::new();
 
         if let Some(ref prompt) = self.system_prompt {
-            msgs.push(Message::system(prompt));
+            content.push(format!("## System\n{}", prompt));
         }
 
-        msgs.extend(self.history.iter().cloned());
+        if !self.history.is_empty() {
+            let mut history_parts = vec!["## Chat History".to_string()];
+            for msg in &self.history {
+                let role = match msg.role {
+                    Role::User => "User",
+                    Role::Assistant => "Assistant",
+                    Role::System => "System",
+                };
+                let text = msg.content.as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| msg.content.to_string());
+                history_parts.push(format!("### {}\n{}", role, text));
+            }
+            content.push(history_parts.join("\n\n"));
+        }
 
         if let Some(ref user_msg) = self.user_message {
-            msgs.push(Message::user(user_msg));
+            content.push(format!("## User\n{}", user_msg));
         }
 
-        msgs
+        let prompt = content.join("\n\n");
+        json!([{"role": "user", "content": prompt}])
     }
 }
 
@@ -100,31 +115,35 @@ mod tests {
     }
 
     #[test]
-    fn test_to_messages_full() {
+    fn test_to_prompt_full() {
         let mut ctx = Context::new();
         ctx.set_system_prompt("You are helpful");
         ctx.push_history(Message::user("old question"));
         ctx.push_history(Message::assistant(json!("old answer")));
         ctx.set_user_message("new question");
 
-        let msgs = ctx.to_messages();
-        assert_eq!(msgs.len(), 4);
-        assert_eq!(msgs[0].role, Role::System);
-        assert_eq!(msgs[0].content, json!("You are helpful"));
-        assert_eq!(msgs[1].content, json!("old question"));
-        assert_eq!(msgs[2].content, json!("old answer"));
-        assert_eq!(msgs[3].content, json!("new question"));
+        let prompt = ctx.to_prompt();
+        let messages = prompt.as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+
+        let content = messages[0]["content"].as_str().unwrap();
+        assert!(content.contains("## System\nYou are helpful"));
+        assert!(content.contains("## User\nold question"));
+        assert!(content.contains("## Assistant\nold answer"));
+        assert!(content.contains("## User\nnew question"));
     }
 
     #[test]
-    fn test_to_messages_minimal() {
+    fn test_to_prompt_minimal() {
         let mut ctx = Context::new();
         ctx.set_user_message("hello");
 
-        let msgs = ctx.to_messages();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].role, Role::User);
-        assert_eq!(msgs[0].content, json!("hello"));
+        let prompt = ctx.to_prompt();
+        let messages = prompt.as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "## User\nhello");
     }
 
     #[test]

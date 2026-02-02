@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::context::{Action, Context};
 use crate::core::Node;
@@ -72,7 +72,7 @@ impl Thought {
 #[async_trait]
 impl Node for Thought {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(json!(ctx.to_messages())))
+        Ok(Some(ctx.to_prompt()))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
