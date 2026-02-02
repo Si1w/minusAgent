@@ -2,9 +2,11 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 
+use serde_json::Value;
+
 use crate::context::{Context, Message};
 use crate::core::Node;
-use crate::cot::{ChainOfThought, PlanNode, ThinkingNode};
+use crate::cot::ChainOfThought;
 use crate::llm::Llm;
 use crate::utils::{start_thinking, stop_thinking};
 
@@ -16,9 +18,7 @@ pub struct Interactive {
 impl Interactive {
     pub fn new(llm: Llm, cot: bool) -> Self {
         let cot = if cot {
-            let plan_node = PlanNode::new(llm.clone());
-            let thinking_node = ThinkingNode::new(llm.clone());
-            Some(ChainOfThought::new(plan_node, thinking_node))
+            Some(ChainOfThought::new(llm.clone()))
         } else {
             None
         };
@@ -52,16 +52,21 @@ impl Interactive {
                 stop_thinking(running, handle).await;
 
                 let output = ctx.last_content()
-                    .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
-                    .and_then(|v| v["answer"].as_str().map(String::from))
-                    .unwrap_or_else(|| ctx.last_content().unwrap_or("").to_string());
+                    .and_then(|v| v["answer"].as_str())
+                    .unwrap_or("")
+                    .to_string();
                 println!("\n{}\n", output);
+
+                // Replace CoT internal response with clean conversation history
+                ctx.history.pop();
+                ctx.push_history(Message::user(input));
+                ctx.push_history(Message::assistant(Value::String(output)));
             } else {
                 ctx.push_history(Message::user(input));
                 self.llm.run(ctx).await?;
                 stop_thinking(running, handle).await;
 
-                if let Some(content) = ctx.last_content() {
+                if let Some(content) = ctx.last_content().and_then(|v| v.as_str()) {
                     println!("\n{}\n", content);
                 }
             }

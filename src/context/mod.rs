@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// A context window for LLM calls, composed of:
 /// {SysPrompt, UserMessage, MessageHistory, Action}
@@ -21,7 +22,7 @@ pub enum Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
-    pub content: String,
+    pub content: Value,
 }
 
 impl Context {
@@ -41,8 +42,8 @@ impl Context {
         self.history.push(msg);
     }
 
-    pub fn last_content(&self) -> Option<&str> {
-        self.history.last().map(|m| m.content.as_str())
+    pub fn last_content(&self) -> Option<&Value> {
+        self.history.last().map(|m| &m.content)
     }
 
     pub fn to_messages(&self) -> Vec<Message> {
@@ -64,15 +65,15 @@ impl Context {
 
 impl Message {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: Role::System, content: content.into() }
+        Self { role: Role::System, content: Value::String(content.into()) }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: Role::User, content: content.into() }
+        Self { role: Role::User, content: Value::String(content.into()) }
     }
 
-    pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: content.into() }
+    pub fn assistant(content: Value) -> Self {
+        Self { role: Role::Assistant, content }
     }
 }
 
@@ -86,6 +87,8 @@ pub enum Action {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
@@ -101,16 +104,16 @@ mod tests {
         let mut ctx = Context::new();
         ctx.set_system_prompt("You are helpful");
         ctx.push_history(Message::user("old question"));
-        ctx.push_history(Message::assistant("old answer"));
+        ctx.push_history(Message::assistant(json!("old answer")));
         ctx.set_user_message("new question");
 
         let msgs = ctx.to_messages();
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0].role, Role::System);
-        assert_eq!(msgs[0].content, "You are helpful");
-        assert_eq!(msgs[1].content, "old question");
-        assert_eq!(msgs[2].content, "old answer");
-        assert_eq!(msgs[3].content, "new question");
+        assert_eq!(msgs[0].content, json!("You are helpful"));
+        assert_eq!(msgs[1].content, json!("old question"));
+        assert_eq!(msgs[2].content, json!("old answer"));
+        assert_eq!(msgs[3].content, json!("new question"));
     }
 
     #[test]
@@ -121,14 +124,14 @@ mod tests {
         let msgs = ctx.to_messages();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, Role::User);
-        assert_eq!(msgs[0].content, "hello");
+        assert_eq!(msgs[0].content, json!("hello"));
     }
 
     #[test]
     fn test_push_history_and_last() {
         let mut ctx = Context::new();
-        ctx.push_history(Message::assistant("response"));
-        assert_eq!(ctx.last_content(), Some("response"));
+        ctx.push_history(Message::assistant(json!("response")));
+        assert_eq!(ctx.last_content(), Some(&json!("response")));
     }
 
     #[test]
@@ -139,7 +142,7 @@ mod tests {
         let usr = Message::user("usr");
         assert_eq!(usr.role, Role::User);
 
-        let ast = Message::assistant("ast");
+        let ast = Message::assistant(json!("ast"));
         assert_eq!(ast.role, Role::Assistant);
     }
 }

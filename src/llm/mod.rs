@@ -54,10 +54,11 @@ impl Node for Llm {
     }
 
     async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
-        if let Some(resp) = exec_res
-            && let Some(content) = resp["choices"][0]["message"]["content"].as_str()
-        {
-            ctx.push_history(Message::assistant(content));
+        if let Some(resp) = exec_res {
+            let content = &resp["choices"][0]["message"]["content"];
+            if !content.is_null() {
+                ctx.push_history(Message::assistant(content.clone()));
+            }
         }
         Ok(Action::Continue)
     }

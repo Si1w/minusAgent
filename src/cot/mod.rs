@@ -2,10 +2,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::context::{Action, Context, Message};
+use crate::context::{Action, Context};
 use crate::core::Node;
 use crate::llm::Llm;
-use crate::utils::parse_content;
+use crate::utils::parse_action;
 
 const PLAN_PROMPT: &str = r#"You are a planning assistant.
 
@@ -21,12 +21,13 @@ Output EXACTLY ONE JSON block:
 {
   "task": "the first task to execute",
   "thinking": "your reasoning about how to approach this question",
-  "todos": "- [ ] task 1\n- [ ] task 2",
-  "action": "continue"
+  "todos": ["task 1", "task 2"],
+  "action": "continue/stop"
 }
 
+- "todos" is a list of ALL tasks to execute (including the first one), with at most {max_turns} items
 - Use "continue" if there are tasks to execute
-- Use "stop" if the answer is immediately obvious (include "answer" field)"#;
+- Use "stop" if the answer is immediately obvious, and include "answer" as a string"#;
 
 const THINKING_PROMPT: &str = r#"You are a thinking assistant.
 
@@ -36,39 +37,40 @@ const THINKING_PROMPT: &str = r#"You are a thinking assistant.
 ## Current Task
 {task}
 
-## Todo List
+## Remaining Tasks
 {todos}
 
 ## Previous Thinking
 {thinking}
 
 ## Instructions
-Execute the current task. Update the todo list and decide the next step.
+Execute the current task. Update the remaining tasks and decide the next step.
 
 Output EXACTLY ONE JSON block:
 
 {
-  "task": "next task to execute",
   "thinking": "your detailed reasoning and result for the current task",
-  "todos": "- [x] done task\n- [ ] remaining task",
-  "action": "continue"
+  "todos": ["remaining task 1", "remaining task 2"],
+  "answer": "the final answer string, only present when action is stop",
+  "action": "continue/stop"
 }
 
+- "todos" contains ONLY the remaining unfinished tasks (remove the current task once done)
 - Use "continue" if there are remaining tasks
-- Use "stop" when all tasks are done (include "answer" field with the final answer)"#;
+- Use "stop" when all tasks are done, and include "answer" as a string"#;
 
-pub struct PlanNode {
+pub struct Thought {
     llm: Llm,
 }
 
-impl PlanNode {
+impl Thought {
     pub fn new(llm: Llm) -> Self {
         Self { llm }
     }
 }
 
 #[async_trait]
-impl Node for PlanNode {
+impl Node for Thought {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
         Ok(Some(json!(ctx.to_messages())))
     }
@@ -78,69 +80,7 @@ impl Node for PlanNode {
     }
 
     async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
-        let content = exec_res
-            .as_ref()
-            .and_then(|r| r["choices"][0]["message"]["content"].as_str())
-            .unwrap_or("");
-
-        ctx.action = match parse_content(content) {
-            Ok(parsed) if parsed.is_object() && parsed.get("action").is_some() => {
-                ctx.push_history(Message::assistant(parsed.to_string()));
-                match parsed["action"].as_str().unwrap_or("stop") {
-                    "continue" => Action::Continue,
-                    "stop" => Action::Stop,
-                    other => Action::CallTool(other.to_string()),
-                }
-            }
-            _ => {
-                ctx.push_history(Message::assistant(content.to_string()));
-                Action::Stop
-            }
-        };
-        Ok(ctx.action.clone())
-    }
-}
-
-pub struct ThinkingNode {
-    llm: Llm,
-}
-
-impl ThinkingNode {
-    pub fn new(llm: Llm) -> Self {
-        Self { llm }
-    }
-}
-
-#[async_trait]
-impl Node for ThinkingNode {
-    async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(json!(ctx.to_messages())))
-    }
-
-    async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
-        self.llm.exec(prep_res).await
-    }
-
-    async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
-        let content = exec_res
-            .as_ref()
-            .and_then(|r| r["choices"][0]["message"]["content"].as_str())
-            .unwrap_or("");
-
-        ctx.action = match parse_content(content) {
-            Ok(parsed) if parsed.is_object() && parsed.get("action").is_some() => {
-                ctx.push_history(Message::assistant(parsed.to_string()));
-                match parsed["action"].as_str().unwrap_or("stop") {
-                    "continue" => Action::Continue,
-                    "stop" => Action::Stop,
-                    other => Action::CallTool(other.to_string()),
-                }
-            }
-            _ => {
-                ctx.push_history(Message::assistant(content.to_string()));
-                Action::Stop
-            }
-        };
+        ctx.action = parse_action(&exec_res, ctx);
         Ok(ctx.action.clone())
     }
 }
@@ -148,18 +88,16 @@ impl Node for ThinkingNode {
 const DEFAULT_MAX_TURNS: usize = 10;
 
 pub struct ChainOfThought {
-    plan_node: PlanNode,
-    thinking_node: ThinkingNode,
+    thought: Thought,
     plan_prompt: String,
     thinking_prompt: String,
     max_turns: usize,
 }
 
 impl ChainOfThought {
-    pub fn new(plan_node: PlanNode, thinking_node: ThinkingNode) -> Self {
+    pub fn new(llm: Llm) -> Self {
         Self {
-            plan_node,
-            thinking_node,
+            thought: Thought::new(llm),
             plan_prompt: PLAN_PROMPT.to_string(),
             thinking_prompt: THINKING_PROMPT.to_string(),
             max_turns: DEFAULT_MAX_TURNS,
@@ -175,37 +113,36 @@ impl ChainOfThought {
         let question = ctx.user_message.as_deref().unwrap_or("").to_string();
         let max_turns_str = self.max_turns.to_string();
 
-        // First plan: standalone call with user query
         ctx.set_system_prompt(
             self.plan_prompt
                 .replace("{question}", &question)
                 .replace("{max_turns}", &max_turns_str),
         );
-        self.plan_node.run(ctx).await?;
+        self.thought.run(ctx).await?;
 
-        // Thinking loop
         let mut turn = 0;
         loop {
             if ctx.action != Action::Continue || turn >= self.max_turns {
                 return Ok(ctx.action.clone());
             }
 
-            let last = ctx.last_content()
-                .and_then(|c| serde_json::from_str::<Value>(c).ok())
-                .unwrap_or(json!({}));
+            let last = ctx.last_content().expect("node should produce output").clone();
 
-            let task = last["task"].as_str().unwrap_or("");
-            let todos = last["todos"].as_str().unwrap_or("");
-            let thinking = last["thinking"].as_str().unwrap_or("");
+            // Remove last CoT response, keep prior conversation history
+            ctx.history.pop();
+
+            let thinking = last["thinking"].as_str().unwrap_or("").to_string();
+            let next_task = last["todos"][0].as_str().unwrap_or("");
+            let todos_str = last["todos"].to_string();
 
             ctx.set_system_prompt(
                 self.thinking_prompt
                     .replace("{question}", &question)
-                    .replace("{task}", task)
-                    .replace("{todos}", todos)
-                    .replace("{thinking}", thinking),
+                    .replace("{task}", next_task)
+                    .replace("{todos}", &todos_str)
+                    .replace("{thinking}", &thinking),
             );
-            self.thinking_node.run(ctx).await?;
+            self.thought.run(ctx).await?;
             turn += 1;
         }
     }
@@ -228,9 +165,7 @@ mod tests {
         let api_key = env::var("LLM_API_KEY").expect("LLM_API_KEY required");
 
         let llm = Llm::new(&base_url, &model, &api_key);
-        let plan_node = PlanNode::new(llm.clone());
-        let thinking_node = ThinkingNode::new(llm);
-        let mut cot = ChainOfThought::new(plan_node, thinking_node);
+        let mut cot = ChainOfThought::new(llm);
 
         let mut ctx = Context::new();
         ctx.set_user_message("What is 15 + 27?");
@@ -239,8 +174,7 @@ mod tests {
         println!("# final context: {:?}", ctx);
         
         let last = ctx.last_content().expect("should have final answer");
-        let parsed: Value = serde_json::from_str(last).expect("should be valid JSON");
-        let answer = parsed["answer"].as_str().unwrap_or(last);
+        let answer = last["answer"].as_str().unwrap_or("");
         assert!(answer.contains("42"), "expected answer to contain 42, got: {}", answer);
 
         Ok(())

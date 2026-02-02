@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 
 use crate::context::{Context, Message};
 use crate::core::Node;
-use crate::cot::{ChainOfThought, PlanNode, ThinkingNode};
+use crate::cot::ChainOfThought;
 use crate::interactive::Interactive;
 use crate::llm::Llm;
 use crate::utils::{start_thinking, stop_thinking};
@@ -66,7 +66,7 @@ async fn prompt(text: &str) -> Result<()> {
     llm.run(&mut ctx).await?;
     stop_thinking(running, handle).await;
 
-    if let Some(content) = ctx.last_content() {
+    if let Some(content) = ctx.last_content().and_then(|v| v.as_str()) {
         println!("{}", content);
     }
 
@@ -75,9 +75,7 @@ async fn prompt(text: &str) -> Result<()> {
 
 async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
     let llm = create_llm()?;
-    let plan_node = PlanNode::new(llm.clone());
-    let thinking_node = ThinkingNode::new(llm);
-    let mut cot = ChainOfThought::new(plan_node, thinking_node);
+    let mut cot = ChainOfThought::new(llm);
     if let Some(n) = max_turns {
         cot = cot.with_max_turns(n);
     }
@@ -90,8 +88,7 @@ async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
     stop_thinking(running, handle).await;
 
     let output = ctx.last_content()
-        .and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok())
-        .and_then(|v| v["answer"].as_str().map(String::from))
+        .and_then(|v| v["answer"].as_str())
         .unwrap_or_default();
     println!("{}", output);
 

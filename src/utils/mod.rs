@@ -2,22 +2,38 @@ use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use anyhow::Result;
-use serde_json::{Value, from_str};
+use serde_json::Value;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-pub fn parse_content(content: &str) -> Result<Value> {
-    let json_str = if let Some(start) = content.find("```json") {
-        let start = start + 7;
-        let end = content[start..].find("```").map(|i| start + i).unwrap_or(content.len());
-        &content[start..end]
-    } else {
-        content
-    };
+use crate::context::{Action, Context, Message};
 
-    let value: Value = from_str(json_str.trim())?;
-    Ok(value)
+pub fn parse_action(exec_res: &Option<Value>, ctx: &mut Context) -> Action {
+    let content = exec_res
+        .as_ref()
+        .and_then(|r| r["choices"][0]["message"]["content"].as_str())
+        .unwrap_or("");
+    let json_str = extract_json(content);
+    let parsed = serde_json::from_str(json_str).unwrap_or(Value::String(content.to_string()));
+    let action = match parsed["action"].as_str() {
+        Some("continue") => Action::Continue,
+        Some("stop") | None => Action::Stop,
+        Some(other) => Action::CallTool(other.to_string()),
+    };
+    ctx.push_history(Message::assistant(parsed));
+    action
+}
+
+fn extract_json(content: &str) -> &str {
+    if let Some(start) = content.find("```") {
+        let after = &content[start + 3..];
+        let json_start = after.find('\n').map(|i| i + 1).unwrap_or(0);
+        let inner = &after[json_start..];
+        if let Some(end) = inner.find("```") {
+            return inner[..end].trim();
+        }
+    }
+    content
 }
 
 pub fn start_thinking() -> (Arc<AtomicBool>, JoinHandle<()>) {
