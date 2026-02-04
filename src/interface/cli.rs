@@ -3,11 +3,10 @@ use std::env;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::context::{Context, Message};
-use crate::core::Node;
-use crate::cot::ChainOfThought;
-use crate::interactive::Interactive;
-use crate::llm::Llm;
+use crate::core::{Context, Message, Node};
+use crate::feature::cot::ChainOfThought;
+use crate::feature::llm::Llm;
+use crate::interface::interactive::Interactive;
 use crate::utils::{start_thinking, stop_thinking};
 
 #[derive(Parser)]

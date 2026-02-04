@@ -4,10 +4,9 @@ use anyhow::Result;
 
 use serde_json::Value;
 
-use crate::context::{Context, Message};
-use crate::core::Node;
-use crate::cot::ChainOfThought;
-use crate::llm::Llm;
+use crate::core::{Context, Message, Node};
+use crate::feature::cot::ChainOfThought;
+use crate::feature::llm::Llm;
 use crate::utils::{start_thinking, stop_thinking};
 
 pub struct Interactive {

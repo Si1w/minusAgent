@@ -2,10 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::context::{Action, Context};
-use crate::core::Node;
-use crate::llm::Llm;
-use crate::utils::parse_action;
+use crate::core::{Action, Context, Message, Node};
+use super::llm::Llm;
 
 const PLAN_PROMPT: &str = r#"You are a planning assistant.
 
@@ -148,11 +146,40 @@ impl ChainOfThought {
     }
 }
 
+fn parse_action(exec_res: &Option<Value>, ctx: &mut Context) -> Action {
+    let content = exec_res
+        .as_ref()
+        .and_then(|r| r["choices"][0]["message"]["content"].as_str())
+        .unwrap_or("");
+    let json_str = extract_json(content);
+    let parsed = serde_json::from_str(json_str).unwrap_or(Value::String(content.to_string()));
+    let action = match parsed["action"].as_str() {
+        Some("continue") => Action::Continue,
+        Some("stop") | None => Action::Stop,
+        Some(other) => Action::CallTool(other.to_string()),
+    };
+    ctx.push_history(Message::assistant(parsed));
+    action
+}
+
+fn extract_json(content: &str) -> &str {
+    if let Some(start) = content.find("```") {
+        let after = &content[start + 3..];
+        let json_start = after.find('\n').map(|i| i + 1).unwrap_or(0);
+        let inner = &after[json_start..];
+        if let Some(end) = inner.find("```") {
+            return inner[..end].trim();
+        }
+    }
+    content
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
 
     use super::*;
+    use crate::core::Context;
 
     #[tokio::test]
     #[ignore]
@@ -172,7 +199,7 @@ mod tests {
         let action = cot.run(&mut ctx).await?;
         assert_eq!(action, Action::Stop);
         println!("# final context: {:?}", ctx);
-        
+
         let last = ctx.last_content().expect("should have final answer");
         let answer = last["answer"].as_str().unwrap_or("");
         assert!(answer.contains("42"), "expected answer to contain 42, got: {}", answer);

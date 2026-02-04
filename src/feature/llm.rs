@@ -3,8 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::context::{Action, Context, Message};
-use crate::core::Node;
+use crate::core::{Action, Context, Message, Node};
 
 #[derive(Clone)]
 pub struct Llm {
