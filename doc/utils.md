@@ -1,18 +1,24 @@
 # utils
 
-Helper functions for common tasks.
+## feature/utils
 
-## `parse_json(content: &str) -> Result<Value>`
+### `process_sse_stream(resp, on_chunk) -> Result<(String, bool)>`
 
-Extracts and parses JSON from LLM responses.
+Processes Server-Sent Events stream from LLM API.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `content` | `&str` | Raw string, possibly wrapped in markdown `` ```json `` fences |
+| `resp` | `Response` | HTTP response with SSE stream |
+| `on_chunk` | `impl Fn(&str)` | Callback for each content chunk |
 
-**Returns:** `serde_json::Value` on success.
+**Returns:** `(full_content, interrupted)` — interrupted is `true` if user pressed a key.
 
-**Behavior:**
-1. If `` ```json `` fence is found, extracts content between the fences.
-2. Otherwise, parses the raw string directly.
-3. Returns an error if no valid JSON is found.
+## interface/utils
+
+### `start_thinking() -> (Arc<AtomicBool>, JoinHandle<()>)`
+
+Spawns animated spinner (`⠋⠙⠹...`) on stdout.
+
+### `stop_thinking(running, handle)`
+
+Stops spinner and clears the line.

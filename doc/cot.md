@@ -1,82 +1,54 @@
 # cot
 
-Chain-of-Thought reasoning. Splits problem-solving into planning and execution.
+Chain-of-Thought reasoning. Splits problem-solving into planning and iterative execution.
 
-## Plan (struct)
+## Thought (struct)
 
-First stage — breaks a question into a todo list of atomic tasks.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `llm` | `Llm` | LLM instance for API calls |
-| `system_prompt` | `String` | Prompt template with `{question}` placeholder |
-
-### `new(llm: Llm) -> Self`
-
-Creates a Plan with the default planning prompt.
-
-### `with_prompt(self, prompt: &str) -> Self`
-
-Overrides the default system prompt.
-
-### Node implementation
-
-- **prep** — Injects the user's question into the system prompt. Builds the message array.
-- **exec** — Delegates to `llm.exec()`.
-- **post** — Parses the JSON response, extracts `action` field (`continue` / `stop` / tool name), updates context.
-
-### Expected LLM output format
-
-```json
-{ "todos": "- [ ] task 1\n- [ ] task 2", "action": "continue" }
-```
-
-## Execute (struct)
-
-Second stage — works through tasks one by one.
+Single thinking step. Wraps an LLM call with action parsing.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `llm` | `Llm` | LLM instance for API calls |
-| `system_prompt` | `String` | Prompt template with `{question}` and `{context}` placeholders |
-
-### `new(llm: Llm) -> Self`
-
-Creates an Execute with the default execution prompt.
-
-### `with_prompt(self, prompt: &str) -> Self`
-
-Overrides the default system prompt.
 
 ### Node implementation
 
-- **prep** — Injects question and previous progress into the system prompt. Appends a `"Continue"` user message to satisfy API requirements.
+- **prep** — Calls `ctx.to_prompt()`.
 - **exec** — Delegates to `llm.exec()`.
-- **post** — Parses the JSON response, updates action. Defaults to `Stop` if parsing fails.
-
-### Expected LLM output format
-
-```json
-{
-  "current": "task being worked on",
-  "result": "result for this task",
-  "todos": "- [x] done\n- [ ] remaining",
-  "action": "continue",
-  "final": "final answer (required when action is stop)"
-}
-```
+- **post** — Parses JSON response, extracts `action` field, updates context.
 
 ## ChainOfThought (struct)
 
-Orchestrator that runs Plan once, then loops Execute until `Action::Stop`.
+Orchestrator: plan once, then loop thinking steps until `Action::Stop` or max turns.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `plan` | `Plan` | Planning stage |
-| `execute` | `Execute` | Execution stage |
+| `thought` | `Thought` | Thinking step executor |
+| `plan_prompt` | `String` | Template with `{question}`, `{max_turns}` |
+| `thinking_prompt` | `String` | Template with `{question}`, `{task}`, `{todos}`, `{thinking}` |
+| `max_turns` | `usize` | Maximum iterations (default: 10) |
 
-### `new(plan: Plan, execute: Execute) -> Self`
+### `new(llm: Llm) -> Self`
 
-### `run(ctx: &mut dyn Context) -> Result<()>`
+Creates with default prompts.
 
-Runs the full chain: plan → execute loop → stop.
+### `with_max_turns(self, n: usize) -> Self`
+
+Sets maximum iterations.
+
+### `run(ctx: &mut Context) -> Result<Action>`
+
+1. Injects plan prompt and runs initial planning step
+2. Loops: extracts next task from `todos[0]`, runs thinking step
+3. Stops when `action` is `stop` or max turns reached
+
+### Expected LLM output (planning)
+
+```json
+{ "task": "first task", "thinking": "...", "todos": ["task 1", "task 2"], "action": "continue" }
+```
+
+### Expected LLM output (thinking)
+
+```json
+{ "thinking": "...", "todos": ["remaining"], "answer": "final (when stop)", "action": "continue/stop" }
+```

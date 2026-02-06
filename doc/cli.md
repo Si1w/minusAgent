@@ -6,34 +6,29 @@ Entry point and command dispatch. Uses `clap` for argument parsing.
 
 | Subcommand | Parameters | Description |
 |------------|------------|-------------|
-| `prompt` | `text: String` | Single LLM call. Sends the text and prints the response |
-| `cot` | `text: String` | Chain-of-Thought reasoning. Plans then executes step by step |
-| `interactive` | — | Multi-turn conversation loop. Type `exit` or `quit` to stop |
+| `prompt` | `text: String` | Single streaming LLM call |
+| `cot` | `text: String`, `--max-turns: Option<usize>` | Chain-of-Thought reasoning |
+| `interactive` | `--cot: bool` | Multi-turn conversation. Use `--cot` for CoT mode. Type `exit` to quit |
 
-## Internal functions
+## Environment Variables
 
-### `create_llm() -> Result<Llm>`
-
-Reads configuration from environment variables (supports `.env` file via `dotenvy`).
-
-| Env Variable | Required | Default |
-|-------------|----------|---------|
+| Variable | Required | Default |
+|----------|----------|---------|
 | `LLM_API_KEY` | Yes | — |
 | `LLM_BASE_URL` | No | `https://codestral.mistral.ai/v1/chat/completions` |
-| `LLM_MODEL` | No | `codestral-2508` |
+| `LLM_MODEL` | No | `codestral-latest` |
 
-### `start_thinking() -> (Arc<AtomicBool>, JoinHandle<()>)`
+## Interactive (struct)
 
-Spawns an animated spinner on stdout. Returns a flag and handle to stop it later.
+Multi-turn conversation handler.
 
-### `stop_thinking(running: Arc<AtomicBool>, handle: JoinHandle<()>)`
+| Field | Type | Description |
+|-------|------|-------------|
+| `llm` | `Llm` | LLM instance |
+| `cot` | `Option<ChainOfThought>` | CoT executor (if `--cot` enabled) |
 
-Stops the spinner and clears the line.
+### `new(llm: Llm, cot: bool) -> Self`
 
-### `parse_final(content: &str) -> String`
+### `run(ctx: &mut Context) -> Result<()>`
 
-Extracts the `"final"` field from a JSON response. Falls back to returning the raw content.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `content` | `&str` | Raw LLM response, possibly wrapped in markdown fences |
+Loops: read input → call LLM (streaming or CoT) → print response → update history.
