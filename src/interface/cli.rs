@@ -3,11 +3,11 @@ use std::env;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::core::{Context, Message, Node};
+use super::utils::{start_thinking, stop_thinking};
+use crate::core::Context;
 use crate::feature::cot::ChainOfThought;
-use crate::feature::llm::Llm;
+use crate::feature::llm::{Llm, StreamCallback};
 use crate::interface::interactive::Interactive;
-use crate::utils::{start_thinking, stop_thinking};
 
 #[derive(Parser)]
 #[command(name = "minusagent")]
@@ -39,7 +39,7 @@ fn create_llm() -> Result<Llm> {
     let base_url = env::var("LLM_BASE_URL")
         .unwrap_or_else(|_| "https://codestral.mistral.ai/v1/chat/completions".to_string());
     let model = env::var("LLM_MODEL")
-        .unwrap_or_else(|_| "codestral-2508".to_string());
+        .unwrap_or_else(|_| "codestral-latest".to_string());
     let api_key = env::var("LLM_API_KEY")
         .map_err(|_| anyhow::anyhow!("LLM_API_KEY environment variable required"))?;
 
@@ -57,17 +57,17 @@ pub async fn run() -> Result<()> {
 }
 
 async fn prompt(text: &str) -> Result<()> {
-    let mut llm = create_llm()?;
-    let mut ctx = Context::new();
-    ctx.push_history(Message::user(text));
+    let llm = create_llm()?;
+    let messages = serde_json::json!([{"role": "user", "content": text}]);
 
-    let (running, handle) = start_thinking();
-    llm.run(&mut ctx).await?;
-    stop_thinking(running, handle).await;
+    let callback: StreamCallback = Box::new(|chunk| {
+        print!("{}", chunk);
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+    });
 
-    if let Some(content) = ctx.last_content().and_then(|v| v.as_str()) {
-        println!("{}", content);
-    }
+    llm.exec_stream(Some(messages), callback).await?;
+    println!();
 
     Ok(())
 }

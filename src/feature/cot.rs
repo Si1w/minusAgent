@@ -13,6 +13,9 @@ const PLAN_PROMPT: &str = r#"You are a planning assistant.
 ## Instructions
 Break down the question into a clear todo list with actionable tasks.
 - You have at most {max_turns} turns to complete all tasks. Plan efficiently.
+- "todos" is a list of ALL tasks to execute (including the first one), with at most {max_turns} items
+- Use "continue" if there are tasks to execute
+- Use "stop" if the answer is immediately obvious, and include "answer" as a string"
 
 Output EXACTLY ONE JSON block:
 
@@ -22,10 +25,7 @@ Output EXACTLY ONE JSON block:
   "todos": ["task 1", "task 2"],
   "action": "continue/stop"
 }
-
-- "todos" is a list of ALL tasks to execute (including the first one), with at most {max_turns} items
-- Use "continue" if there are tasks to execute
-- Use "stop" if the answer is immediately obvious, and include "answer" as a string"#;
+"#;
 
 const THINKING_PROMPT: &str = r#"You are a thinking assistant.
 
@@ -43,8 +43,11 @@ const THINKING_PROMPT: &str = r#"You are a thinking assistant.
 
 ## Instructions
 Execute the current task. Update the remaining tasks and decide the next step.
+- "todos" contains ONLY the remaining unfinished tasks (remove the current task once done)
+- Use "continue" if there are remaining tasks
+- Use "stop" when all tasks are done, and include "answer" as a string
 
-Output EXACTLY ONE JSON block:
+Output EXACTLY and ONLY in ONE JSON block:
 
 {
   "thinking": "your detailed reasoning and result for the current task",
@@ -52,10 +55,7 @@ Output EXACTLY ONE JSON block:
   "answer": "the final answer string, only present when action is stop",
   "action": "continue/stop"
 }
-
-- "todos" contains ONLY the remaining unfinished tasks (remove the current task once done)
-- Use "continue" if there are remaining tasks
-- Use "stop" when all tasks are done, and include "answer" as a string"#;
+"#;
 
 pub struct Thought {
     llm: Llm,

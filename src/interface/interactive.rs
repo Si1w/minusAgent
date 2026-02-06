@@ -4,10 +4,10 @@ use anyhow::Result;
 
 use serde_json::Value;
 
-use crate::core::{Context, Message, Node};
+use crate::core::{Context, Message};
 use crate::feature::cot::ChainOfThought;
-use crate::feature::llm::Llm;
-use crate::utils::{start_thinking, stop_thinking};
+use crate::feature::llm::{Llm, StreamCallback};
+use super::utils::{start_thinking, stop_thinking};
 
 pub struct Interactive {
     llm: Llm,
@@ -62,12 +62,21 @@ impl Interactive {
                 ctx.push_history(Message::assistant(Value::String(output)));
             } else {
                 ctx.push_history(Message::user(input));
-                self.llm.run(ctx).await?;
                 stop_thinking(running, handle).await;
 
-                if let Some(content) = ctx.last_content().and_then(|v| v.as_str()) {
-                    println!("\n{}\n", content);
+                let callback: StreamCallback = Box::new(|chunk| {
+                    print!("{}", chunk);
+                    io::stdout().flush().ok();
+                });
+
+                let messages = ctx.to_prompt();
+                let resp = self.llm.exec_stream(Some(messages), callback).await?;
+
+                // Update context with full response
+                if let Some(content) = resp.and_then(|r| r["choices"][0]["message"]["content"].as_str().map(String::from)) {
+                    ctx.push_history(Message::assistant(Value::String(content)));
                 }
+                println!("\n");
             }
         }
 
