@@ -47,14 +47,24 @@ impl Interactive {
 
             if let Some(cot) = &mut self.cot {
                 ctx.set_user_message(input);
-                cot.run(ctx).await?;
+                if let Err(e) = cot.run(ctx).await {
+                    stop_thinking(running, handle).await;
+                    eprintln!("\nError: {}\n", e);
+                    continue;
+                }
                 stop_thinking(running, handle).await;
 
-                let output = ctx.last_content()
+                let last = ctx.last_content();
+                let output = last
                     .and_then(|v| v["answer"].as_str())
                     .unwrap_or("")
                     .to_string();
-                println!("\n{}\n", output);
+
+                if output.is_empty() {
+                    eprintln!("\nNo answer received. Last response: {:?}\n", last);
+                } else {
+                    println!("\n{}\n", output);
+                }
 
                 // Replace CoT internal response with clean conversation history
                 ctx.history.pop();

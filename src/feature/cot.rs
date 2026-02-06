@@ -4,58 +4,10 @@ use serde_json::Value;
 
 use crate::core::{Action, Context, Message, Node};
 use super::llm::Llm;
+use super::skill::Skill;
 
-const PLAN_PROMPT: &str = r#"You are a planning assistant.
-
-## Question
-{question}
-
-## Instructions
-Break down the question into a clear todo list with actionable tasks.
-- You have at most {max_turns} turns to complete all tasks. Plan efficiently.
-- "todos" is a list of ALL tasks to execute (including the first one), with at most {max_turns} items
-- Use "continue" if there are tasks to execute
-- Use "stop" if the answer is immediately obvious, and include "answer" as a string"
-
-Output EXACTLY ONE JSON block:
-
-{
-  "task": "the first task to execute",
-  "thinking": "your reasoning about how to approach this question",
-  "todos": ["task 1", "task 2"],
-  "action": "continue/stop"
-}
-"#;
-
-const THINKING_PROMPT: &str = r#"You are a thinking assistant.
-
-## Question
-{question}
-
-## Current Task
-{task}
-
-## Remaining Tasks
-{todos}
-
-## Previous Thinking
-{thinking}
-
-## Instructions
-Execute the current task. Update the remaining tasks and decide the next step.
-- "todos" contains ONLY the remaining unfinished tasks (remove the current task once done)
-- Use "continue" if there are remaining tasks
-- Use "stop" when all tasks are done, and include "answer" as a string
-
-Output EXACTLY and ONLY in ONE JSON block:
-
-{
-  "thinking": "your detailed reasoning and result for the current task",
-  "todos": ["remaining task 1", "remaining task 2"],
-  "answer": "the final answer string, only present when action is stop",
-  "action": "continue/stop"
-}
-"#;
+const PLAN_SKILL: &str = include_str!("skills/plan/SKILL.md");
+const THINKING_SKILL: &str = include_str!("skills/thinking/SKILL.md");
 
 pub struct Thought {
     llm: Llm,
@@ -94,10 +46,13 @@ pub struct ChainOfThought {
 
 impl ChainOfThought {
     pub fn new(llm: Llm) -> Self {
+        let plan_skill = Skill::parse(PLAN_SKILL, "plan").expect("invalid plan skill");
+        let thinking_skill = Skill::parse(THINKING_SKILL, "thinking").expect("invalid thinking skill");
+
         Self {
             thought: Thought::new(llm),
-            plan_prompt: PLAN_PROMPT.to_string(),
-            thinking_prompt: THINKING_PROMPT.to_string(),
+            plan_prompt: plan_skill.script,
+            thinking_prompt: thinking_skill.script,
             max_turns: DEFAULT_MAX_TURNS,
         }
     }

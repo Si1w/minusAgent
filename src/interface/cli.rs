@@ -86,10 +86,16 @@ async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
     cot.run(&mut ctx).await?;
     stop_thinking(running, handle).await;
 
-    let output = ctx.last_content()
+    let last = ctx.last_content();
+    let output = last
         .and_then(|v| v["answer"].as_str())
         .unwrap_or_default();
-    println!("{}", output);
+
+    if output.is_empty() {
+        eprintln!("No answer received. Last response: {:?}", last);
+    } else {
+        println!("{}", output);
+    }
 
     Ok(())
 }
