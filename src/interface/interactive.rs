@@ -1,10 +1,9 @@
 use std::io::{self, Write};
 
 use anyhow::Result;
-
 use serde_json::Value;
 
-use crate::core::{Context, Message};
+use crate::core::{Context, Message, prompt};
 use crate::feature::cot::ChainOfThought;
 use crate::feature::llm::{Llm, StreamCallback};
 use super::utils::{start_thinking, stop_thinking};
@@ -56,7 +55,7 @@ impl Interactive {
 
                 let last = ctx.last_content();
                 let output = last
-                    .and_then(|v| v["answer"].as_str())
+                    .and_then(|v| v["content"].as_str())
                     .unwrap_or("")
                     .to_string();
 
@@ -79,7 +78,7 @@ impl Interactive {
                     io::stdout().flush().ok();
                 });
 
-                let messages = ctx.to_prompt();
+                let messages = prompt::render(ctx);
                 let resp = self.llm.exec_stream(Some(messages), callback).await?;
 
                 // Update context with full response

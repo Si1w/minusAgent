@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-pub const DEFAULT_SKILLS_DIR: &str = "./feature/skills";
+pub const DEFAULT_SKILLS_DIR: &str = "./skills";
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum SkillContext {

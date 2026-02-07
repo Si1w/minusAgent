@@ -11,10 +11,10 @@ minusAgent provides autonomous LLM-powered workflows through a composable node-b
 ```
 src/
 ├── cli/        # CLI commands & orchestration
-├── core/       # Node trait (prep → exec → post pipeline)
-├── llm/        # LLM API client
-├── cot/        # Chain-of-Thought (Plan + Execute loop)
-└── context/    # Message history & action state
+├── core/       # Node trait, Context, Skill, PromptEngine
+├── feature/    # LLM client, Chain-of-Thought
+├── interface/  # Interactive mode
+└── skills/     # Skill definitions (plan, thinking)
 ```
 
 **Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — that all processing units implement.
@@ -44,6 +44,6 @@ LLM_MODEL=<optional, defaults to codestral-2508>
 
 ## How CoT Works
 
-1. **Plan** — breaks the question into a YAML task list
-2. **Execute** — iterates through tasks until completion
-3. **Output** — extracts the final answer from structured YAML response
+1. **Plan** — analyzes the question, creates a todo list
+2. **Execute** — iterates through tasks, passing previous content as context
+3. **Output** — extracts the final content from structured JSON response

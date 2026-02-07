@@ -1,6 +1,6 @@
 # context
 
-Conversation state: `{system_prompt, user_message, history, action}`.
+Conversation state: `{system_prompt, user_message, history, skills, action}`.
 
 ## Context (struct)
 
@@ -9,6 +9,7 @@ Conversation state: `{system_prompt, user_message, history, action}`.
 | `system_prompt` | `Option<String>` | System-level instruction |
 | `user_message` | `Option<String>` | Current user input |
 | `history` | `Vec<Message>` | Conversation history |
+| `skills` | `Vec<Skill>` | Available skills |
 | `action` | `Action` | Current execution state |
 
 ### Methods
@@ -20,7 +21,6 @@ Conversation state: `{system_prompt, user_message, history, action}`.
 | `set_user_message(msg)` | Sets user message |
 | `push_history(msg)` | Appends to history |
 | `last_content()` | Gets last message content |
-| `to_prompt()` | Converts to JSON messages array for API call |
 
 ## Message (struct)
 

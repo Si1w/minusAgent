@@ -2,12 +2,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::core::{Action, Context, Message, Node};
+use crate::core::{Action, Context, Message, Node, Skill, prompt};
 use super::llm::Llm;
-use super::skill::Skill;
 
-const PLAN_SKILL: &str = include_str!("skills/plan/SKILL.md");
-const THINKING_SKILL: &str = include_str!("skills/thinking/SKILL.md");
+const PLAN_SKILL: &str = include_str!("../skills/plan/SKILL.md");
+const THINKING_SKILL: &str = include_str!("../skills/thinking/SKILL.md");
 
 pub struct Thought {
     llm: Llm,
@@ -22,7 +21,7 @@ impl Thought {
 #[async_trait]
 impl Node for Thought {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(ctx.to_prompt()))
+        Ok(Some(prompt::render(ctx)))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
@@ -63,14 +62,13 @@ impl ChainOfThought {
     }
 
     pub async fn run(&mut self, ctx: &mut Context) -> Result<Action> {
-        let question = ctx.user_message.as_deref().unwrap_or("").to_string();
-        let max_turns_str = self.max_turns.to_string();
+        // Save original question to history for context
+        if let Some(ref q) = ctx.user_message {
+            ctx.push_history(Message::user(q.clone()));
+        }
 
-        ctx.set_system_prompt(
-            self.plan_prompt
-                .replace("{question}", &question)
-                .replace("{max_turns}", &max_turns_str),
-        );
+        // First turn: planning
+        ctx.set_system_prompt(&self.plan_prompt);
         self.thought.run(ctx).await?;
 
         let mut turn = 0;
@@ -80,21 +78,13 @@ impl ChainOfThought {
             }
 
             let last = ctx.last_content().expect("node should produce output").clone();
+            let prev_content = last["content"].as_str().unwrap_or("").to_string();
 
-            // Remove last CoT response, keep prior conversation history
+            // Pop last response, inject as context for next turn
             ctx.history.pop();
+            ctx.set_system_prompt(&self.thinking_prompt);
+            ctx.set_user_message(&prev_content);
 
-            let thinking = last["thinking"].as_str().unwrap_or("").to_string();
-            let next_task = last["todos"][0].as_str().unwrap_or("");
-            let todos_str = last["todos"].to_string();
-
-            ctx.set_system_prompt(
-                self.thinking_prompt
-                    .replace("{question}", &question)
-                    .replace("{task}", next_task)
-                    .replace("{todos}", &todos_str)
-                    .replace("{thinking}", &thinking),
-            );
             self.thought.run(ctx).await?;
             turn += 1;
         }
@@ -156,7 +146,7 @@ mod tests {
         println!("# final context: {:?}", ctx);
 
         let last = ctx.last_content().expect("should have final answer");
-        let answer = last["answer"].as_str().unwrap_or("");
+        let answer = last["content"].as_str().unwrap_or("");
         assert!(answer.contains("42"), "expected answer to contain 42, got: {}", answer);
 
         Ok(())

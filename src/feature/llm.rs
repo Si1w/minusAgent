@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 
 use super::utils::process_sse_stream;
-use crate::core::{Action, Context, Message, Node};
+use crate::core::{Action, Context, Message, Node, prompt};
 
 pub type StreamCallback = Box<dyn Fn(&str) + Send + Sync>;
 
@@ -70,7 +70,7 @@ impl Llm {
 #[async_trait]
 impl Node for Llm {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(ctx.to_prompt()))
+        Ok(Some(prompt::render(ctx)))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {

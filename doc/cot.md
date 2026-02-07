@@ -12,7 +12,7 @@ Single thinking step. Wraps an LLM call with action parsing.
 
 ### Node implementation
 
-- **prep** — Calls `ctx.to_prompt()`.
+- **prep** — Calls `prompt::render(ctx)`.
 - **exec** — Delegates to `llm.exec()`.
 - **post** — Parses JSON response, extracts `action` field, updates context.
 
@@ -23,13 +23,13 @@ Orchestrator: plan once, then loop thinking steps until `Action::Stop` or max tu
 | Field | Type | Description |
 |-------|------|-------------|
 | `thought` | `Thought` | Thinking step executor |
-| `plan_prompt` | `String` | Template with `{question}`, `{max_turns}` |
-| `thinking_prompt` | `String` | Template with `{question}`, `{task}`, `{todos}`, `{thinking}` |
+| `plan_prompt` | `String` | Loaded from `skills/plan/SKILL.md` |
+| `thinking_prompt` | `String` | Loaded from `skills/thinking/SKILL.md` |
 | `max_turns` | `usize` | Maximum iterations (default: 10) |
 
 ### `new(llm: Llm) -> Self`
 
-Creates with default prompts.
+Creates with prompts loaded from skill files.
 
 ### `with_max_turns(self, n: usize) -> Self`
 
@@ -37,18 +37,18 @@ Sets maximum iterations.
 
 ### `run(ctx: &mut Context) -> Result<Action>`
 
-1. Injects plan prompt and runs initial planning step
-2. Loops: extracts next task from `todos[0]`, runs thinking step
-3. Stops when `action` is `stop` or max turns reached
+1. Saves original question to history (for Question section in prompt)
+2. Sets `plan_prompt` as system prompt, runs initial planning step
+3. Loops:
+   - Extracts `content` from last response
+   - Pops last response from history
+   - Sets `thinking_prompt` as system prompt
+   - Sets previous `content` as new user message
+   - Runs thinking step
+4. Stops when `action` is `stop` or max turns reached
 
-### Expected LLM output (planning)
+### Expected LLM output
 
 ```json
-{ "task": "first task", "thinking": "...", "todos": ["task 1", "task 2"], "action": "continue" }
-```
-
-### Expected LLM output (thinking)
-
-```json
-{ "thinking": "...", "todos": ["remaining"], "answer": "final (when stop)", "action": "continue/stop" }
+{ "content": "reasoning and remaining tasks", "action": "continue/stop" }
 ```
