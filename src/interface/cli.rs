@@ -88,7 +88,7 @@ async fn cot(text: &str, max_turns: Option<usize>) -> Result<()> {
 
     let last = ctx.last_content();
     let output = last
-        .and_then(|v| v["answer"].as_str())
+        .and_then(|v| v.as_str())
         .unwrap_or_default();
 
     if output.is_empty() {

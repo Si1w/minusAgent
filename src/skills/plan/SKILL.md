@@ -8,3 +8,4 @@ Break down the problem into actionable steps:
 - Create a clear todo list
 - Identify dependencies between tasks
 - Start with the simplest step first
+- The overall plan should not be over 10 turns long

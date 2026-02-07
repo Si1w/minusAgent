@@ -55,7 +55,7 @@ impl Interactive {
 
                 let last = ctx.last_content();
                 let output = last
-                    .and_then(|v| v["content"].as_str())
+                    .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
 

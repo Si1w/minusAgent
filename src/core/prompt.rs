@@ -4,15 +4,12 @@ use super::context::{Context, Role};
 
 const DEFAULT_INSTRUCTION: &str = "You are a helpful assistant.";
 const OUTPUT_FORMAT: &str = r#"
-Output EXACTLY ONE JSON block:
+Wrap your entire response in an action tag:
+- <continue>your response</continue> if there are more steps to execute
+- <stop>your response</stop> if you have the final answer
 
-{
-  "content": "your response",
-  "action": "continue/stop"
-}
-
-- content: your response to the user
-- action: Use "continue" if there are tasks to execute and use "stop" if the answer is immediately obvious, and include "answer" as a string""#;
+Example:
+<stop>The answer is 42.</stop>"#;
 
 fn header(name: &str) -> String {
     format!("## {}", name)
@@ -56,9 +53,9 @@ impl PromptEngine {
         // Skills
         if !self.context.skills.is_empty() {
             let skills_list: Vec<String> = self.context.skills.iter()
-                .map(|s| s.to_prompt_hint())
+                .map(|s| format!("{}\n{}", sub_header(&s.name), s.description))
                 .collect();
-            sections.push(format!("{}\n{}", header("Skills"), skills_list.join("\n")));
+            sections.push(format!("{}\n{}", header("Skills"), skills_list.join("\n\n")));
         }
 
         // Question (first user message in history)
@@ -149,6 +146,7 @@ mod tests {
             context: SkillContext::Inline,
             disable_model_invocation: false,
             script: String::new(),
+            parameters: None,
         });
         ctx.set_user_message("Find info");
 
@@ -157,6 +155,6 @@ mod tests {
         let content = messages[0]["content"].as_str().unwrap();
 
         assert!(content.contains("## Skills"));
-        assert!(content.contains("- search: Search the web"));
+        assert!(content.contains("### search\nSearch the web"));
     }
 }

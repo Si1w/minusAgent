@@ -10,11 +10,10 @@ minusAgent provides autonomous LLM-powered workflows through a composable node-b
 
 ```
 src/
-├── cli/        # CLI commands & orchestration
 ├── core/       # Node trait, Context, Skill, PromptEngine
-├── feature/    # LLM client, Chain-of-Thought
-├── interface/  # Interactive mode
-└── skills/     # Skill definitions (plan, thinking)
+├── feature/    # LLM client, Chain-of-Thought, utils
+├── interface/  # CLI commands, Interactive mode
+└── skills/     # Skill definitions (plan, thinking, command)
 ```
 
 **Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — that all processing units implement.
@@ -46,4 +45,4 @@ LLM_MODEL=<optional, defaults to codestral-2508>
 
 1. **Plan** — analyzes the question, creates a todo list
 2. **Execute** — iterates through tasks, passing previous content as context
-3. **Output** — extracts the final content from structured JSON response
+3. **Output** — parses `<stop>` / `<continue>` action tags from LLM response

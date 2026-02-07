@@ -32,6 +32,6 @@ Returns `{ choices: [{ message: { content } }], interrupted }`. Press any key to
 
 ## Node implementation
 
-- **prep** — Calls `ctx.to_prompt()` to build the messages JSON array.
+- **prep** — Calls `prompt::render(ctx)` to build the messages JSON array.
 - **exec** — POSTs `{ model, messages }` to `base_url` with Bearer auth. Returns raw API response.
 - **post** — Extracts `choices[0].message.content` and pushes it as assistant message. Returns `Action::Continue`.

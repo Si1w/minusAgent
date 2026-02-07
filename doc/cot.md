@@ -14,7 +14,7 @@ Single thinking step. Wraps an LLM call with action parsing.
 
 - **prep** — Calls `prompt::render(ctx)`.
 - **exec** — Delegates to `llm.exec()`.
-- **post** — Parses JSON response, extracts `action` field, updates context.
+- **post** — Parses `<action>` tags from response, extracts body, updates context.
 
 ## ChainOfThought (struct)
 
@@ -40,15 +40,16 @@ Sets maximum iterations.
 1. Saves original question to history (for Question section in prompt)
 2. Sets `plan_prompt` as system prompt, runs initial planning step
 3. Loops:
-   - Extracts `content` from last response
+   - Extracts body from last response
    - Pops last response from history
    - Sets `thinking_prompt` as system prompt
-   - Sets previous `content` as new user message
+   - Sets previous body as new user message
    - Runs thinking step
-4. Stops when `action` is `stop` or max turns reached
+4. Stops when action is `stop` or max turns reached
 
 ### Expected LLM output
 
-```json
-{ "content": "reasoning and remaining tasks", "action": "continue/stop" }
+```
+<continue>reasoning and remaining tasks</continue>
+<stop>final answer</stop>
 ```

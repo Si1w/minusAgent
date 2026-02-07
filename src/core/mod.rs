@@ -5,4 +5,4 @@ pub mod prompt;
 
 pub use context::{Context, Message, Role};
 pub use node::{Action, Node};
-pub use skill::{Skill, SkillContext, load_skills, load_default_skills};
+pub use skill::{Skill, SkillContext};

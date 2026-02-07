@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::core::{Action, Context, Message, Node, Skill, prompt};
 use super::llm::Llm;
+use super::utils::parse_action;
 
 const PLAN_SKILL: &str = include_str!("../skills/plan/SKILL.md");
 const THINKING_SKILL: &str = include_str!("../skills/thinking/SKILL.md");
@@ -29,7 +30,13 @@ impl Node for Thought {
     }
 
     async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
-        ctx.action = parse_action(&exec_res, ctx);
+        let raw = exec_res
+            .as_ref()
+            .and_then(|r| r["choices"][0]["message"]["content"].as_str())
+            .unwrap_or("");
+        let (action, body) = parse_action(raw);
+        ctx.push_history(Message::assistant(Value::String(body.to_string())));
+        ctx.action = action;
         Ok(ctx.action.clone())
     }
 }
@@ -78,7 +85,7 @@ impl ChainOfThought {
             }
 
             let last = ctx.last_content().expect("node should produce output").clone();
-            let prev_content = last["content"].as_str().unwrap_or("").to_string();
+            let prev_content = last.as_str().unwrap_or("").to_string();
 
             // Pop last response, inject as context for next turn
             ctx.history.pop();
@@ -89,34 +96,6 @@ impl ChainOfThought {
             turn += 1;
         }
     }
-}
-
-fn parse_action(exec_res: &Option<Value>, ctx: &mut Context) -> Action {
-    let content = exec_res
-        .as_ref()
-        .and_then(|r| r["choices"][0]["message"]["content"].as_str())
-        .unwrap_or("");
-    let json_str = extract_json(content);
-    let parsed = serde_json::from_str(json_str).unwrap_or(Value::String(content.to_string()));
-    let action = match parsed["action"].as_str() {
-        Some("continue") => Action::Continue,
-        Some("stop") | None => Action::Stop,
-        Some(other) => Action::CallTool(other.to_string()),
-    };
-    ctx.push_history(Message::assistant(parsed));
-    action
-}
-
-fn extract_json(content: &str) -> &str {
-    if let Some(start) = content.find("```") {
-        let after = &content[start + 3..];
-        let json_start = after.find('\n').map(|i| i + 1).unwrap_or(0);
-        let inner = &after[json_start..];
-        if let Some(end) = inner.find("```") {
-            return inner[..end].trim();
-        }
-    }
-    content
 }
 
 #[cfg(test)]
@@ -146,7 +125,7 @@ mod tests {
         println!("# final context: {:?}", ctx);
 
         let last = ctx.last_content().expect("should have final answer");
-        let answer = last["content"].as_str().unwrap_or("");
+        let answer = last.as_str().unwrap_or("");
         assert!(answer.contains("42"), "expected answer to contain 42, got: {}", answer);
 
         Ok(())

@@ -26,17 +26,18 @@ Returns system prompt with optional output format appended.
 Renders context into JSON messages array with sections:
 
 1. **System** — System prompt + output format
-2. **Skills** — Available skills list (if any)
+2. **Skills** — Available skills as `### name` + description (if any)
 3. **Question** — First user message from history (original question)
 4. **Chat History** — All messages in history
 5. **User** — Current user message
 
 ### Output format
 
-When `structured_output` is true, appends:
+When `structured_output` is true, appends action tag instructions:
 
-```json
-{ "content": "your response", "action": "continue/stop" }
+```
+<continue>your response</continue>
+<stop>your response</stop>
 ```
 
 ## `render(ctx: &Context) -> Value`

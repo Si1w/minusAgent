@@ -13,6 +13,16 @@ Processes Server-Sent Events stream from LLM API.
 
 **Returns:** `(full_content, interrupted)` — interrupted is `true` if user pressed a key.
 
+### `parse_action(content: &str) -> (Action, &str)`
+
+Parses `<action>body</action>` tags from LLM response.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `content` | `&str` | Raw LLM response text |
+
+**Returns:** `(action, body)` — action is `Continue` or `Stop`, body is the content inside the tags. Falls back to `Stop` with full content if no tag is found.
+
 ## interface/utils
 
 ### `start_thinking() -> (Arc<AtomicBool>, JoinHandle<()>)`

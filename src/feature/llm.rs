@@ -26,6 +26,36 @@ impl Llm {
         }
     }
 
+    pub async fn exec_with_tools(
+        &self,
+        messages: Value,
+        tools: Value,
+    ) -> Result<Option<Value>> {
+        let body = json!({
+            "model": self.model,
+            "messages": messages,
+            "tools": tools
+        });
+
+        let resp = self
+            .client
+            .post(&self.base_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("API error {}: {}", status, body);
+        }
+
+        let json = resp.json::<Value>().await?;
+        Ok(Some(json))
+    }
+
     pub async fn exec_stream(
         &self,
         prep_res: Option<Value>,

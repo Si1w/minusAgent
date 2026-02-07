@@ -5,6 +5,8 @@ use crossterm::event::{self, Event, KeyEventKind};
 use reqwest::Response;
 use serde_json::Value;
 
+use crate::core::Action;
+
 fn key_pressed() -> bool {
     if event::poll(Duration::ZERO).unwrap_or(false) {
         if let Ok(Event::Key(key)) = event::read() {
@@ -49,4 +51,24 @@ pub async fn process_sse_stream(
         }
     }
     Ok((full_content, interrupted))
+}
+
+/// Parse `<action>body</action>` tags from LLM response, returns (action, body).
+pub fn parse_action(content: &str) -> (Action, &str) {
+    if let Some(body) = extract_tag(content, "continue") {
+        (Action::Continue, body)
+    } else if let Some(body) = extract_tag(content, "stop") {
+        (Action::Stop, body)
+    } else {
+        (Action::Stop, content.trim())
+    }
+}
+
+fn extract_tag<'a>(content: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let start = content.find(&open)?;
+    let inner = &content[start + open.len()..];
+    let end = inner.rfind(&close)?;
+    Some(inner[..end].trim())
 }
