@@ -78,7 +78,7 @@ impl Interactive {
                     io::stdout().flush().ok();
                 });
 
-                let messages = prompt::render(ctx);
+                let messages = prompt::PromptEngine::new(ctx.clone()).without_structured_output().render();  // structured output is not needed here
                 let resp = self.llm.exec_stream(Some(messages), callback).await?;
 
                 // Update context with full response
