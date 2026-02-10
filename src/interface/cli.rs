@@ -34,7 +34,7 @@ pub enum Commands {
 }
 
 fn create_llm() -> Result<Llm> {
-    dotenvy::dotenv().ok();
+    dotenvy::dotenv().ok();  // Load .env file if present
 
     let base_url = env::var("LLM_BASE_URL")
         .unwrap_or_else(|_| "https://codestral.mistral.ai/v1/chat/completions".to_string());

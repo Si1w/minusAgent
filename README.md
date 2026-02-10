@@ -33,7 +33,7 @@ cargo run -- interactive
 
 ## Configuration
 
-Set environment variables in `.env`:
+Set environment variables in `.env`, or export them in your shell:
 
 ```
 LLM_API_KEY=<your-api-key>
