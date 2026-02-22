@@ -2,14 +2,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::context::Context;
+use crate::core::context::Context;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Action {
     #[default]
-    Continue,
-    Stop,
-    CallTool(String),
+    Pending,
+    Running,
+    Completed,
 }
 
 #[async_trait]
