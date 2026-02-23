@@ -1,48 +1,58 @@
 # minusAgent
 
-A minimal LLM agent framework in Rust, built with YAGNI philosophy.
-
-## Overview
-
-minusAgent provides autonomous LLM-powered workflows through a composable node-based pipeline. It supports single prompts, chain-of-thought reasoning, and interactive conversations.
+A minimal LLM agent framework in Rust
 
 ## Architecture
 
 ```
 src/
-├── core/       # Node trait, Context, Skill, PromptEngine
-├── feature/    # LLM client, Chain-of-Thought, utils
-├── interface/  # CLI commands, Interactive mode
-└── skills/     # Skill definitions (plan, thinking, command)
+├── core/           # Node trait, Context, Config, PromptEngine
+├── feature/        # LLM client
+├── interface/      # CLI
+└── instructions/   # System prompt, config template
 ```
 
 **Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — that all processing units implement.
 
-## Usage
+## Quick Start
 
 ```bash
-# Single prompt
-cargo run -- prompt "your question"
+# Initialize config
+minusagent init
 
-# Chain-of-Thought reasoning
-cargo run -- cot "your question"
+# Edit your config
+vim ~/.minusagent/config.toml
 
-# Interactive multi-turn conversation
-cargo run -- interactive
+# Run
+minusagent
+
+# Run with a different LLM
+minusagent --llm openai
 ```
 
 ## Configuration
 
-Set environment variables in `.env`:
+Config file: `~/.minusagent/config.toml`
 
+```toml
+[default]
+name = "codestral"
+model = "codestral-latest"
+base_url = "https://codestral.mistral.ai/v1/chat/completions"
+api_key = "your-api-key"
+max_tokens = 4096
+
+# Optional: additional LLMs for --llm switching
+[[llm]]
+name = "openai"
+model = "gpt-4"
+base_url = "https://api.openai.com/v1/chat/completions"
+api_key = "sk-xxx"
+max_tokens = 4096
 ```
-LLM_API_KEY=<your-api-key>
-LLM_BASE_URL=<optional, defaults to Mistral Codestral>
-LLM_MODEL=<optional, defaults to codestral-2508>
+
+## Testing
+
+```bash
+cargo test
 ```
-
-## How CoT Works
-
-1. **Plan** — analyzes the question, creates a todo list
-2. **Execute** — iterates through tasks, passing previous content as context
-3. **Output** — parses `<stop>` / `<continue>` action tags from LLM response
