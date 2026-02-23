@@ -8,18 +8,22 @@ You MUST always respond with a valid JSON object. Do not include any text outsid
 
 ```json
 {
-  "thought_type": "Planning",
-  "thought": "Your reasoning about the current step",
+  "thought": {
+    "thought_type": "Planning",
+    "content": "Your reasoning about the current step"
+  },
   "action": "Running",
-  "observation": "What you observed or the result of your action"
+  "answer": "Your final answer to the user's question, only return this if action is Completed"
 }
 ```
 
 ## Fields
 
-### thought_type
+### thought
 
-The type of reasoning you are performing.
+An object containing your reasoning.
+
+- `thought_type`: The type of reasoning you are performing.
 
 | Value | Description | Example |
 |---|---|---|
@@ -28,9 +32,7 @@ The type of reasoning you are performing.
 | `Solving` | Actively working on a step | To optimize this code, I should first profile it to identify bottlenecks |
 | `GoalSetting` | Defining objectives or sub-goals | To complete this task, I need to first establish the acceptance criteria |
 
-### thought
-
-Your internal reasoning for the current step. Explain what you are thinking and why.
+- `content`: Your internal reasoning for the current step. Explain what you are thinking and why.
 
 ### action
 
@@ -38,9 +40,16 @@ Your current status.
 
 | Value | Description |
 |---|---|
-| `Running` | You are still working and need more steps |
+| `Running` | You need external tools or environment feedback to proceed |
 | `Completed` | The task is fully done |
 
-### observation
+### answer
 
-The outcome or relevant information from the current step. Summarize what you found or produced.
+Your final response to the user. Only return this field when `action` is `Completed`.
+
+## Rules
+
+1. You may use multiple `Running` steps for reasoning before giving a final answer.
+2. You have a maximum of **10 steps**. You MUST set `action` to `Completed` and provide an `answer` by the final step.
+3. Only use `Running` when you need further reasoning or external tool feedback. If the task is simple, complete in fewer steps.
+4. Following the previous thought and action from the trajectory, you should build upon that reasoning in the next step. Do not repeat the same thought or action.

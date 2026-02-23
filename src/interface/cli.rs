@@ -1,10 +1,12 @@
 use std::fs;
+use std::io::{self, Write};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::core::config::{self, LLMConfig};
 use crate::core::context::Context;
+use crate::core::{Action, Node};
 use crate::feature::llm::LLM;
 
 const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
@@ -27,6 +29,47 @@ pub enum Commands {
 pub struct Session {
     pub llm: LLM,
     pub ctx: Context,
+}
+
+impl Session {
+    // TODO: Move the loop logic to agent.rs
+    pub async fn run(&mut self) -> Result<()> {
+        loop {
+            print!("> ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+
+            if input.is_empty() || input == "exit" {
+                break;
+            }
+
+            self.ctx.init_trajectory(input.to_string());
+
+            let max_steps = 10;
+            for step in 0..max_steps {
+                let action = self.llm.run(&mut self.ctx).await?;
+                if action == Action::Completed {
+                    if let Some(last) = self.ctx.trajectories.last() {
+                        if let Some(answer) = &last.answer {
+                            println!("{}", answer);
+                        }
+                    }
+                    break;
+                }
+                if step == max_steps - 1 {
+                    if let Some(last) = self.ctx.trajectories.last() {
+                        if let Some(thought) = &last.thought.content {
+                            println!("{}", thought);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Cli {

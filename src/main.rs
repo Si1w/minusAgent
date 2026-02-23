@@ -10,8 +10,8 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Init) => init_config(),
         None => {
-            let _session = cli.create_session()?;
-            Ok(())
+            let mut session = cli.create_session()?;
+            session.run().await
         }
     }
 }

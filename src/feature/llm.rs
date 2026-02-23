@@ -92,24 +92,29 @@ impl Node for LLM {
             .unwrap_or(raw.trim());
         let parsed: Value = serde_json::from_str(content)?;
 
-        let thought_type = match parsed["thought_type"].as_str().unwrap_or_default() {
+        let thought_type = match parsed["thought"]["thought_type"].as_str().unwrap_or_default() {
             "Planning" => ThoughtType::Planning,
             "Solving" => ThoughtType::Solving,
             "GoalSetting" => ThoughtType::GoalSetting,
             _ => ThoughtType::None,
         };
+        let response = parsed["thought"]["content"].as_str().unwrap_or_default().to_string();
         let thought = Thought {
             thought_type,
-            content: Some(parsed["thought"].as_str().unwrap_or_default().to_string()),
+            content: Some(response),
         };
         let action = match parsed["action"].as_str().unwrap_or_default() {
             "Running" => Action::Running,
             "Completed" => Action::Completed,
             _ => Action::Pending,
         };
-        let observation = parsed["observation"].as_str().unwrap_or_default().to_string();
 
-        ctx.log_trajectory(thought, action.clone(), observation);
+        if action == Action::Completed {
+            let answer = parsed["answer"].as_str().map(|s| s.to_string());
+            ctx.log_trajectory(thought, action.clone(), None, answer);
+        } else {
+            ctx.log_trajectory(thought, action.clone(), None, None);
+        }
         Ok(action)
     }
 }

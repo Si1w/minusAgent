@@ -1,6 +1,6 @@
 use crate::core::node::Action;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ThoughtType {
     None,
     Planning,
@@ -18,7 +18,8 @@ pub struct Thought {
 pub struct Trajectory {
     pub thought: Thought,
     pub action: Action,
-    pub observation: String,
+    pub observation: Option<String>,
+    pub answer: Option<String>,
 }
 
 #[derive(Clone)]
@@ -42,15 +43,17 @@ impl Context {
                 content: None,
             },
             action: Action::Pending,
-            observation: format!("User Query: {}", query),
+            observation: Some(format!("User Query: {}", query)),
+            answer: None,
         });
     }
 
-    pub fn log_trajectory(&mut self, thought: Thought, action: Action, observation: String) {
+    pub fn log_trajectory(&mut self, thought: Thought, action: Action, observation: Option<String>, answer: Option<String>) {
         self.trajectories.push(Trajectory {
             thought,
             action,
             observation,
+            answer,
         });
     }
 }

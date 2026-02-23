@@ -31,7 +31,9 @@ impl PromptEngine {
                 prompt.push_str(&bullet_point(&format!("Thought: {}", thought)));
             }
             prompt.push_str(&bullet_point(&format!("Action: {:?}", trajectory.action)));
-            prompt.push_str(&bullet_point(&format!("Observation: {}", trajectory.observation)));
+            if let Some(observation) = &trajectory.observation {
+                prompt.push_str(&bullet_point(&format!("Observation: {}", observation)));
+            }
             prompt.push_str("\n");
         }
         prompt
