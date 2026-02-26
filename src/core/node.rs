@@ -10,6 +10,8 @@ pub enum Action {
     Pending,
     Running,
     Completed,
+    Execute(Option<String>),
+    UseSkill(Vec<String>),
 }
 
 #[async_trait]

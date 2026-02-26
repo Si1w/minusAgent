@@ -106,15 +106,22 @@ impl Node for LLM {
         let action = match parsed["action"].as_str().unwrap_or_default() {
             "Running" => Action::Running,
             "Completed" => Action::Completed,
+            "Execute" => {
+                let cmd = parsed["command"].as_str().map(|s| s.to_string());
+                Action::Execute(cmd)
+            }
+            "UseSkill" => {
+                let names = parsed["skills"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                Action::UseSkill(names)
+            }
             _ => Action::Pending,
         };
 
-        if action == Action::Completed {
-            let answer = parsed["answer"].as_str().map(|s| s.to_string());
-            ctx.log_trajectory(thought, action.clone(), None, answer);
-        } else {
-            ctx.log_trajectory(thought, action.clone(), None, None);
-        }
+        let answer = parsed["answer"].as_str().map(|s| s.to_string());
+        ctx.log_trajectory(thought, action.clone(), None, answer);
         Ok(action)
     }
 }

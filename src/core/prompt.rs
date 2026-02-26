@@ -1,4 +1,4 @@
-use crate::core::context::Context;
+use crate::core::{context::Context, skill::FrontMatter};
 
 pub struct PromptEngine {
     pub context: Context,
@@ -35,6 +35,20 @@ impl PromptEngine {
                 prompt.push_str(&bullet_point(&format!("Observation: {}", observation)));
             }
             prompt.push_str("\n");
+        }
+        prompt
+    }
+
+    pub fn build_system_prompt(base: &str, skills: Vec<FrontMatter>) -> String {
+        let mut prompt = base.to_string();
+        if skills.is_empty() {
+            return prompt;
+        }
+
+        prompt.push_str(&section("Available Skills"));
+        for skill in skills {
+            prompt.push_str(&subsection(&skill.name));
+            prompt.push_str(&format!("{}\n\n", skill.description));
         }
         prompt
     }

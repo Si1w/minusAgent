@@ -13,7 +13,8 @@ You MUST always respond with a valid JSON object. Do not include any text outsid
     "content": "Your reasoning about the current step"
   },
   "action": "Running",
-  "answer": "Your final answer to the user's question, only return this if action is Completed"
+  "skills": ["skill1", "skill2"],
+  "answer": "Your final answer"
 }
 ```
 
@@ -40,12 +41,22 @@ Your current status.
 
 | Value | Description |
 |---|---|
-| `Running` | You need external tools or environment feedback to proceed |
+| `Running` | You need further reasoning to proceed |
+| `Execute` | Execute a shell command. Requires `command` field |
+| `UseSkill` | Activate one or more skills by name. Requires `skills` field with an array of skill names |
 | `Completed` | The task is fully done |
+
+### skills
+
+Optional. An array of skill names to activate from the Available Skills list. Only present when `action` is `UseSkill`.
+
+### command
+
+Optional. A shell command to execute. Only present when `action` is `Execute`. The output will be returned as an observation in the next step.
 
 ### answer
 
-Your final response to the user. Only return this field when `action` is `Completed`.
+Optional. Your final response to the user. Only present when `action` is `Completed`.
 
 ## Rules
 
@@ -53,3 +64,4 @@ Your final response to the user. Only return this field when `action` is `Comple
 2. You have a maximum of **10 steps**. You MUST set `action` to `Completed` and provide an `answer` by the final step.
 3. Only use `Running` when you need further reasoning or external tool feedback. If the task is simple, complete in fewer steps.
 4. Following the previous thought and action from the trajectory, you should build upon that reasoning in the next step. Do not repeat the same thought or action.
+5. Use `UseSkill` only when you determine that one or more available skills are needed. After skills are activated, continue reasoning with the provided skill instructions.
