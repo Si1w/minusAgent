@@ -1,14 +1,14 @@
 use std::io::{self, Write};
 use std::process::Stdio;
+use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use crossterm::event::{self, Event, KeyCode};
-use crossterm::terminal;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
 use crate::core::context::{Context, Thought, ThoughtType};
+use crate::core::signal::SPINNER_PAUSE;
 use crate::core::{Action, Node};
 
 pub struct Harness;
@@ -33,20 +33,15 @@ impl Node for Harness {
             None => return Ok(None),
         };
 
+        SPINNER_PAUSE.on();
+        tokio::time::sleep(Duration::from_millis(100)).await;
         print!("Execute: {} [y/n] ", cmd);
         io::stdout().flush()?;
-        terminal::enable_raw_mode()?;
-        let approved = loop {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => break true,
-                    _ => break false,
-                }
-            }
-        };
-        terminal::disable_raw_mode()?;
-        println!();
-        if !approved {
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer)?;
+        let answer = answer.trim();
+        if answer != "y" && answer != "Y" {
+            SPINNER_PAUSE.off();
             return Ok(Some(json!({ "output": "[denied] user rejected the command" })));
         }
 
@@ -67,6 +62,8 @@ impl Node for Harness {
         if !output.status.success() {
             result.push_str(&format!("[exit code: {}]", output.status.code().unwrap_or(-1)));
         }
+
+        SPINNER_PAUSE.off();
         Ok(Some(json!({ "output": result })))
     }
 

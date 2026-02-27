@@ -1,10 +1,7 @@
-use std::io::{self, Write};
-
 use anyhow::Result;
 
 use crate::core::config::Config;
 use crate::core::context::Context;
-use crate::core::Action;
 use crate::feature::agent::Agent;
 use crate::feature::llm::LLM;
 
@@ -25,38 +22,8 @@ impl Session {
         Ok(Session { agent, ctx })
     }
 
-    pub async fn run(&mut self) -> Result<()> {
-        loop {
-            print!("> ");
-            io::stdout().flush()?;
-
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let input = input.trim();
-
-            if input.is_empty() || input == "exit" {
-                break;
-            }
-
-            self.ctx.init_trajectory(input.to_string());
-            self.agent.run(&mut self.ctx).await?;
-
-            if let Some(last_traj) = self.ctx.trajectories.last() {
-                match &last_traj.action {
-                    Action::Completed => {
-                        if let Some(answer) = &last_traj.answer {
-                            println!("{}", answer);
-                        }
-                        else {
-                            println!("Task completed");
-                        }
-                    }
-                    _ => {
-                        println!("Failed to complete task");
-                    }
-                }
-            }
-        }
-        Ok(())
+    pub async fn run(&mut self, query: &str) -> Result<()> {
+        self.ctx.init_trajectory(query.to_string());
+        self.agent.run(&mut self.ctx).await
     }
 }

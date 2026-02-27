@@ -20,6 +20,7 @@ impl Agent {
         let mut iter = 0;
         loop {
             if iter >= self.max_iterations {
+                println!("Reached maximum iterations without completing the task.");
                 return Ok(());
             }
             let action = self.llm.run(ctx).await?;
