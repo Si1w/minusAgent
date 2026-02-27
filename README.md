@@ -6,13 +6,15 @@ A minimal LLM agent framework in Rust
 
 ```
 src/
-├── core/           # Node trait, Context, Config, PromptEngine
-├── feature/        # LLM client
-├── interface/      # CLI
-└── instructions/   # System prompt, config template
+├── core/           # Node trait, Context, Config, PromptEngine, Skill
+├── feature/        # Agent, LLM client, Command harness
+├── interface/      # CLI, Session
+└── instructions/   # System prompt
 ```
 
 **Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — that all processing units implement.
+
+**Agent loop**: The `Agent` orchestrates LLM reasoning and command execution in a loop (max 10 iterations), stopping when the LLM returns a completed answer.
 
 ## Quick Start
 
@@ -23,11 +25,11 @@ minusagent init
 # Edit your config
 vim ~/.minusagent/config.toml
 
-# Run
-minusagent
+# Start a new session
+minusagent new
 
-# Run with a different LLM
-minusagent --llm openai
+# Start with a different LLM
+minusagent new --llm openai
 ```
 
 ## Configuration
