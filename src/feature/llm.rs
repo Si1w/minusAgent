@@ -3,41 +3,49 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use super::utils::process_sse_stream;
-use crate::core::{Action, Context, Message, Node, prompt};
+use crate::core::config::LLMConfig;
+use crate::core::context::{Context, Thought, ThoughtType};
+use crate::core::prompt::PromptEngine;
+use crate::core::{Action, Node};
 
-pub type StreamCallback = Box<dyn Fn(&str) + Send + Sync>;
-
-#[derive(Clone)]
-pub struct Llm {
+pub struct LLM {
     client: Client,
-    base_url: String,
     model: String,
+    base_url: String,
     api_key: String,
+    max_tokens: usize,
 }
 
-impl Llm {
-    pub fn new(base_url: &str, model: &str, api_key: &str) -> Self {
-        Self {
+impl LLM {
+    pub fn new(model: String, base_url: String, api_key: String, max_tokens: usize) -> Self {
+        LLM {
             client: Client::new(),
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            api_key: api_key.to_string(),
+            model,
+            base_url,
+            api_key,
+            max_tokens,
         }
     }
 
-    pub async fn exec_with_tools(
-        &self,
-        messages: Value,
-        tools: Value,
-    ) -> Result<Option<Value>> {
+    pub fn from_config(config: &LLMConfig) -> Self {
+        Self::new(
+            config.model.clone(),
+            config.base_url.clone(),
+            config.api_key.clone(),
+            config.max_tokens(),
+        )
+    }
+
+    pub async fn message(&self, system_prompt: String, user_prompt: String) -> Result<Option<Value>> {
         let body = json!({
             "model": self.model,
-            "messages": messages,
-            "tools": tools
+            "max_tokens": self.max_tokens,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
         });
-
-        let resp = self
+        let response = self
             .client
             .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -46,161 +54,103 @@ impl Llm {
             .send()
             .await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("API error {}: {}", status, body);
+        if response.status().is_success() {
+            Ok(Some(response.json::<Value>().await?))
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("LLM API error ({}): {}", status, body)
         }
-
-        let json = resp.json::<Value>().await?;
-        Ok(Some(json))
-    }
-
-    pub async fn exec_stream(
-        &self,
-        prep_res: Option<Value>,
-        on_chunk: StreamCallback,
-    ) -> Result<Option<Value>> {
-        let messages = prep_res.ok_or_else(|| anyhow::anyhow!("No messages provided"))?;
-
-        let body = json!({
-            "model": self.model,
-            "messages": messages,
-            "stream": true
-        });
-
-        let resp = self
-            .client
-            .post(&self.base_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("API error {}: {}", status, body);
-        }
-
-        let (full_content, interrupted) = process_sse_stream(resp, |c| on_chunk(c)).await?;
-
-        Ok(Some(json!({
-            "choices": [{
-                "message": {
-                    "content": full_content
-                }
-            }],
-            "interrupted": interrupted
-        })))
     }
 }
 
 #[async_trait]
-impl Node for Llm {
+impl Node for LLM {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
-        Ok(Some(prompt::render(ctx)))
+        let system_prompt = ctx.system_prompt.clone();
+        let user_prompt = PromptEngine::new(ctx.clone()).render();
+        Ok(Some(json!({
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt
+        })))
     }
 
     async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>> {
-        let messages = prep_res.ok_or_else(|| anyhow::anyhow!("No messages provided"))?;
-
-        let body = json!({
-            "model": self.model,
-            "messages": messages
-        });
-
-        let resp = self
-            .client
-            .post(&self.base_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("API error {}: {}", status, body);
-        }
-
-        let json = resp.json::<Value>().await?;
-        Ok(Some(json))
+        let prep = prep_res.ok_or_else(|| anyhow::anyhow!("prep result is None"))?;
+        let system_prompt = prep["system_prompt"].as_str().unwrap_or_default().to_string();
+        let user_prompt = prep["user_prompt"].as_str().unwrap_or_default().to_string();
+        self.message(system_prompt, user_prompt).await
     }
 
     async fn post(&mut self, _prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action> {
-        if let Some(resp) = exec_res {
-            let content = &resp["choices"][0]["message"]["content"];
-            if !content.is_null() {
-                ctx.push_history(Message::assistant(content.clone()));
+        let exec = exec_res.ok_or_else(|| anyhow::anyhow!("exec result is None"))?;
+        let raw = exec["choices"][0]["message"]["content"].as_str().unwrap_or_default();
+        let content = raw.trim()
+            .strip_prefix("```json").or_else(|| raw.trim().strip_prefix("```"))
+            .and_then(|s| s.strip_suffix("```"))
+            .map(|s| s.trim())
+            .unwrap_or(raw.trim());
+        let parsed: Value = serde_json::from_str(content)?;
+
+        let thought_type = match parsed["thought"]["thought_type"].as_str().unwrap_or_default() {
+            "Planning" => ThoughtType::Planning,
+            "Solving" => ThoughtType::Solving,
+            "GoalSetting" => ThoughtType::GoalSetting,
+            _ => ThoughtType::None,
+        };
+        let response = parsed["thought"]["content"].as_str().unwrap_or_default().to_string();
+        let thought = Thought {
+            thought_type,
+            content: Some(response),
+        };
+        let action = match parsed["action"].as_str().unwrap_or_default() {
+            "Running" => Action::Running,
+            "Completed" => Action::Completed,
+            "Execute" => {
+                let cmd = parsed["command"].as_str().map(|s| s.to_string());
+                Action::Execute(cmd)
             }
-        }
-        Ok(Action::Continue)
+            "UseSkill" => {
+                let names = parsed["skills"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                Action::UseSkill(names)
+            }
+            _ => Action::Pending,
+        };
+
+        let answer = parsed["answer"].as_str().map(|s| s.to_string());
+        ctx.log_trajectory(thought, action.clone(), None, answer);
+        Ok(action)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::sync::{Arc, Mutex};
-
     use super::*;
+    use crate::core::config::LLMConfig;
+
+    const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
 
     #[tokio::test]
-    #[ignore]
-    async fn test_llm_node() -> Result<()> {
-        dotenvy::dotenv().ok();
-
-        let base_url = env::var("LLM_BASE_URL")
-            .unwrap_or_else(|_| "https://codestral.mistral.ai/v1/chat/completions".to_string());
-        let model = env::var("LLM_MODEL").unwrap_or_else(|_| "codestral-latest".to_string());
-        let api_key = env::var("LLM_API_KEY").expect("LLM_API_KEY required");
-
-        let mut node = Llm::new(&base_url, &model, &api_key);
-        let mut ctx = Context::new();
-        ctx.push_history(Message::user("Say hello"));
-
-        node.run(&mut ctx).await?;
-
-        let content = ctx.last_content()
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        assert!(content.to_lowercase().contains("hello"), "Response should contain 'hello'");
-
-        Ok(())
+    async fn test_message() {
+        let config = LLMConfig::load(None).unwrap();
+        let llm = LLM::from_config(&config);
+        let result = llm.message(SYSTEM_PROMPT.to_string(), "Say hello.".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
     }
 
     #[tokio::test]
-    #[ignore]
-    async fn test_llm_stream() -> Result<()> {
-        dotenvy::dotenv().ok();
-
-        let base_url = env::var("LLM_BASE_URL")
-            .unwrap_or_else(|_| "https://codestral.mistral.ai/v1/chat/completions".to_string());
-        let model = env::var("LLM_MODEL").unwrap_or_else(|_| "codestral-latest".to_string());
-        let api_key = env::var("LLM_API_KEY").expect("LLM_API_KEY required");
-
-        let node = Llm::new(&base_url, &model, &api_key);
-        let chunks = Arc::new(Mutex::new(Vec::new()));
-        let chunks_clone = chunks.clone();
-
-        let callback: StreamCallback = Box::new(move |chunk| {
-            print!("{}", chunk);
-            chunks_clone.lock().unwrap().push(chunk.to_string());
-        });
-
-        let messages = json!([{"role": "user", "content": "Say hello in 3 words"}]);
-        let result = node.exec_stream(Some(messages), callback).await?;
-
-        assert!(!chunks.lock().unwrap().is_empty());
-
-        let resp = result.unwrap();
-        let content = resp["choices"][0]["message"]["content"].as_str().unwrap_or("");
-        assert!(content.to_lowercase().contains("hello"), "Response should contain 'hello'");
-        assert!(!resp["interrupted"].as_bool().unwrap_or(true), "Should not be interrupted");
-
-        Ok(())
+    async fn test_node_run() {
+        let config = LLMConfig::load(None).unwrap();
+        let mut llm = LLM::from_config(&config);
+        let mut ctx = Context::new(SYSTEM_PROMPT.to_string());
+        ctx.init_trajectory("Say hello.".to_string());
+        let action = llm.run(&mut ctx).await;
+        assert!(action.is_ok());
+        assert!(ctx.trajectories.len() >= 2);
     }
 }
+

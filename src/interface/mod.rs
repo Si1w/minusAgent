@@ -1,3 +1,2 @@
 pub mod cli;
-pub mod interactive;
-mod utils;
+pub mod session;
