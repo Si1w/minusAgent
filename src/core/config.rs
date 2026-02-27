@@ -35,7 +35,7 @@ impl LLMConfig {
         match name {
             Some(n) => file_config.llm.unwrap_or_default()
                 .into_iter().find(|l| l.name == n)
-                .ok_or_else(|| anyhow::anyhow!("LLM '{}' not found in config", n)),
+                .ok_or_else(|| anyhow::anyhow!("'{}' not found in config", n)),
             None => Ok(file_config.default),
         }
     }

@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 use std::process::Stdio;
 
 use anyhow::Result;
@@ -29,6 +30,14 @@ impl Node for Harness {
             Some(cmd) => cmd,
             None => return Ok(None),
         };
+
+        print!("Execute: {} [y/n] ", cmd);
+        io::stdout().flush()?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer)?;
+        if answer.trim().to_lowercase() != "y" {
+            return Ok(Some(json!({ "output": "[denied] user rejected the command" })));
+        }
 
         let output = Command::new("sh")
             .arg("-c")
