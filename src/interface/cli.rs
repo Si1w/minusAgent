@@ -10,7 +10,7 @@ use crate::interface::session::Session;
 #[command(name = "MinusAgent")]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 
     #[arg(long)]
     pub llm: Option<String>,
@@ -25,8 +25,8 @@ pub enum Commands {
 impl Cli {
     pub async fn run(self) -> Result<()> {
         match self.command {
-            Commands::Init => Self::init_config(),
-            Commands::New => {
+            Some(Commands::Init) => Self::init_config(),
+            Some(Commands::New) | None => {
                 let mut session = self.create_session()?;
                 session.run().await
             }
@@ -45,7 +45,7 @@ impl Cli {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let template = include_str!("../../config.toml");
+        let template = include_str!("../../config.json");
         fs::write(&path, template)?;
         println!("Created config at {}", path.display());
         println!("Edit the file to add your LLM configurations.");

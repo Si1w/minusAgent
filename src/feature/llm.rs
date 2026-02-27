@@ -129,13 +129,14 @@ impl Node for LLM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::LLMConfig;
+    use crate::core::config::Config;
 
     const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
 
     #[tokio::test]
     async fn test_message() {
-        let config = LLMConfig::load(None).unwrap();
+        let config = Config::load().unwrap();
+        let config = config.get_llm(None).unwrap();
         let llm = LLM::from_config(&config);
         let result = llm.message(SYSTEM_PROMPT.to_string(), "Say hello.".to_string()).await;
         assert!(result.is_ok());
@@ -144,7 +145,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_run() {
-        let config = LLMConfig::load(None).unwrap();
+        let config = Config::load().unwrap();
+        let config = config.get_llm(None).unwrap();
         let mut llm = LLM::from_config(&config);
         let mut ctx = Context::new(SYSTEM_PROMPT.to_string());
         ctx.init_trajectory("Say hello.".to_string());

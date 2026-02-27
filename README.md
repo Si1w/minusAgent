@@ -23,34 +23,37 @@ src/
 minusagent init
 
 # Edit your config
-vim ~/.minusagent/config.toml
+vim ~/.minusagent/config.json
 
-# Start a new session
+# Start a session (default)
+minusagent
+
+# Or explicitly
 minusagent new
 
 # Start with a different LLM
-minusagent new --llm openai
+minusagent --llm codestral-latest
 ```
 
 ## Configuration
 
-Config file: `~/.minusagent/config.toml`
+Config file: `~/.minusagent/config.json`
 
-```toml
-[default]
-name = "codestral"
-model = "codestral-latest"
-base_url = "https://codestral.mistral.ai/v1/chat/completions"
-api_key = "your-api-key"
-max_tokens = 4096
-
-# Optional: additional LLMs for --llm switching
-[[llm]]
-name = "openai"
-model = "gpt-4"
-base_url = "https://api.openai.com/v1/chat/completions"
-api_key = "sk-xxx"
-max_tokens = 4096
+```json
+{
+  "agent": {
+    "max_iterations": 10,
+    "default_llm": "codestral-latest"
+  },
+  "llm": [
+    {
+      "model": "codestral-latest",
+      "base_url": "https://codestral.mistral.ai/v1/chat/completions",
+      "api_key": "your-api-key",
+      "max_tokens": 4096
+    }
+  ]
+}
 ```
 
 ## Testing

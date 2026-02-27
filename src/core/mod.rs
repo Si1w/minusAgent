@@ -6,5 +6,5 @@ pub mod skill;
 
 pub use node::{Action, Node};
 pub use context::Context;
-pub use config::LLMConfig;
+pub use config::Config;
 pub use prompt::PromptEngine;

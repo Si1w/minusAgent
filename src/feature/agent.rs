@@ -1,26 +1,25 @@
 use anyhow::Result;
 
-use crate::core::{context::Context};
+use crate::core::context::Context;
 use crate::core::{Action, Node};
 use crate::feature::harness::Harness;
 use crate::feature::llm::LLM;
 
-const MAX_ITERATIONS: usize = 10;
-
 pub struct Agent {
     llm: LLM,
     harness: Harness,
+    max_iterations: usize,
 }
 
 impl Agent {
-    pub fn new(llm: LLM) -> Self {
-        Agent { llm, harness: Harness }
+    pub fn new(llm: LLM, max_iterations: usize) -> Self {
+        Agent { llm, harness: Harness, max_iterations }
     }
 
     pub async fn run(&mut self, ctx: &mut Context) -> Result<()> {
         let mut iter = 0;
         loop {
-            if iter >= MAX_ITERATIONS {
+            if iter >= self.max_iterations {
                 return Ok(());
             }
             let action = self.llm.run(ctx).await?;

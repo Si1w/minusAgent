@@ -3,6 +3,8 @@ use std::process::Stdio;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event::{self, Event, KeyCode};
+use crossterm::terminal;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
@@ -33,9 +35,18 @@ impl Node for Harness {
 
         print!("Execute: {} [y/n] ", cmd);
         io::stdout().flush()?;
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer)?;
-        if answer.trim().to_lowercase() != "y" {
+        terminal::enable_raw_mode()?;
+        let approved = loop {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => break true,
+                    _ => break false,
+                }
+            }
+        };
+        terminal::disable_raw_mode()?;
+        println!();
+        if !approved {
             return Ok(Some(json!({ "output": "[denied] user rejected the command" })));
         }
 

@@ -5,43 +5,59 @@ use anyhow::Result;
 use serde::Deserialize;
 
 const DEFAULT_MAX_TOKENS: usize = 4096;
+const DEFAULT_MAX_ITERATIONS: usize = 10;
 
-#[derive(Deserialize)]
-struct FileConfig {
-    default: LLMConfig,
-    llm: Option<Vec<LLMConfig>>,
+#[derive(Deserialize, Clone)]
+pub struct AgentConfig {
+    pub max_iterations: Option<usize>,
+    pub default_llm: String,
 }
 
 #[derive(Deserialize, Clone)]
 pub struct LLMConfig {
-    pub name: String,
     pub model: String,
     pub base_url: String,
     pub api_key: String,
     pub max_tokens: Option<usize>,
 }
 
+#[derive(Deserialize, Clone)]
+pub struct Config {
+    pub agent: AgentConfig,
+    pub llm: Vec<LLMConfig>,
+}
+
 impl LLMConfig {
     pub fn max_tokens(&self) -> usize {
         self.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS)
     }
+}
 
-    pub fn load(name: Option<&str>) -> Result<Self> {
+impl AgentConfig {
+    pub fn max_iterations(&self) -> usize {
+        self.max_iterations.unwrap_or(DEFAULT_MAX_ITERATIONS)
+    }
+}
+
+impl Config {
+    pub fn load() -> Result<Self> {
         dotenvy::dotenv().ok();
         let path = config_path();
         let content = fs::read_to_string(&path)?;
-        let file_config: FileConfig = toml::from_str(&content)?;
+        let config: Config = serde_json::from_str(&content)?;
+        Ok(config)
+    }
 
-        match name {
-            Some(n) => file_config.llm.unwrap_or_default()
-                .into_iter().find(|l| l.name == n)
-                .ok_or_else(|| anyhow::anyhow!("'{}' not found in config", n)),
-            None => Ok(file_config.default),
-        }
+    pub fn get_llm(&self, model: Option<&str>) -> Result<LLMConfig> {
+        let target = model.unwrap_or(&self.agent.default_llm);
+        self.llm.iter()
+            .find(|l| l.model == target)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("'{}' not found in config", target))
     }
 }
 
 pub fn config_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".minusagent").join("config.toml")
+    PathBuf::from(home).join(".minusagent").join("config.json")
 }
