@@ -120,8 +120,9 @@ impl Node for LLM {
             _ => Action::Pending,
         };
 
+        let params = parsed.get("params").cloned();
         let answer = parsed["answer"].as_str().map(|s| s.to_string());
-        ctx.log_trajectory(thought, action.clone(), None, answer);
+        ctx.log_trajectory(thought, action.clone(), params, None, answer);
         Ok(action)
     }
 }
@@ -131,7 +132,7 @@ mod tests {
     use super::*;
     use crate::core::config::Config;
 
-    const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
+    const SYSTEM_PROMPT: &str = include_str!("../instructions/prompts/system_prompt.md");
 
     #[tokio::test]
     async fn test_message() {

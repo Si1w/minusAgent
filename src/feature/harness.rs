@@ -75,6 +75,7 @@ impl Node for Harness {
         ctx.log_trajectory(
             Thought { thought_type: ThoughtType::None, content: None },
             Action::Pending,
+            None,
             Some(observation),
             None,
         );

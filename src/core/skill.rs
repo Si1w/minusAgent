@@ -67,17 +67,18 @@ impl FrontMatter {
         Ok(fm)
     }
 
-    pub fn load_all_skills(dir: &Path) -> Result<Vec<Self>> {
+    pub fn register_all_skills(dir: &Path) -> Vec<Self> {
         let mut skills = Vec::new();
-        for entry in fs::read_dir(dir)? {
-            let path = entry?.path();
-            if path.is_dir() {
-                if let Ok(fm) = Self::load(&path) {
-                    skills.push(fm);
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    if let Ok(fm) = Self::load(&entry.path()) {
+                        skills.push(fm);
+                    }
                 }
             }
         }
-        Ok(skills)
+        skills
     }
 }
 
@@ -88,6 +89,22 @@ impl Skill {
             frontmatter,
             instruction,
         })
+    }
+
+    pub fn search(dir: &Path, name: &str) -> Option<Self> {
+        let path = dir.join(name);
+        if path.is_dir() { Self::load(&path).ok() } else { None }
+    }
+
+    pub fn load_instructions(dir: &Path, names: &[String]) -> String {
+        let mut parts = Vec::new();
+        for name in names {
+            match Self::search(dir, name) {
+                Some(skill) => parts.push(format!("[{}]\n{}", skill.frontmatter.name, skill.instruction)),
+                None => parts.push(format!("[error] skill '{}' not found", name)),
+            }
+        }
+        parts.join("\n\n")
     }
 }
 

@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::Deserialize;
+
+use crate::core::router::Router;
 
 const DEFAULT_MAX_TOKENS: usize = 4096;
 const DEFAULT_MAX_ITERATIONS: usize = 10;
@@ -42,7 +43,7 @@ impl AgentConfig {
 impl Config {
     pub fn load() -> Result<Self> {
         dotenvy::dotenv().ok();
-        let path = config_path();
+        let path = Router::new().path("config.json");
         let content = fs::read_to_string(&path)?;
         let config: Config = serde_json::from_str(&content)?;
         Ok(config)
@@ -57,7 +58,3 @@ impl Config {
     }
 }
 
-pub fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".minusagent").join("config.json")
-}

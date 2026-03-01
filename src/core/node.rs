@@ -1,3 +1,5 @@
+use std::fmt;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -12,6 +14,21 @@ pub enum Action {
     Completed,
     Execute(Option<String>),
     UseSkill(Vec<String>),
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Action::Pending => write!(f, "Pending"),
+            Action::Running => write!(f, "Running"),
+            Action::Completed => write!(f, "Completed"),
+            Action::Execute(cmd) => match cmd {
+                Some(cmd) => write!(f, "Execute: {}", cmd),
+                None => write!(f, "Execute"),
+            },
+            Action::UseSkill(names) => write!(f, "UseSkill: {}", names.join(", ")),
+        }
+    }
 }
 
 #[async_trait]

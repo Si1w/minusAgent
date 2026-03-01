@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::core::config;
 use crate::core::Action;
+use crate::core::Router;
 use crate::interface::session::Session;
 use crate::interface::spinner::Spinner;
 
@@ -71,7 +71,7 @@ impl Cli {
     }
 
     fn init_config() -> Result<()> {
-        let path = config::config_path();
+        let path = Router::new().path("config.json");
         if path.exists() {
             anyhow::bail!("Config already exists at {}", path.display());
         }

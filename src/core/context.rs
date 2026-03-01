@@ -1,3 +1,5 @@
+use serde_json::Value;
+
 use crate::core::node::Action;
 
 #[derive(Debug, Clone)]
@@ -18,6 +20,7 @@ pub struct Thought {
 pub struct Trajectory {
     pub thought: Thought,
     pub action: Action,
+    pub params: Option<Value>,
     pub observation: Option<String>,
     pub answer: Option<String>,
 }
@@ -43,17 +46,25 @@ impl Context {
                 content: None,
             },
             action: Action::Pending,
+            params: None,
             observation: Some(format!("User Query: {}", query)),
             answer: None,
         });
     }
 
-    pub fn log_trajectory(&mut self, thought: Thought, action: Action, observation: Option<String>, answer: Option<String>) {
+    pub fn log_trajectory(&mut self, thought: Thought, action: Action, params: Option<Value>, observation: Option<String>, answer: Option<String>) {
         self.trajectories.push(Trajectory {
             thought,
             action,
+            params,
             observation,
             answer,
         });
+    }
+
+    pub fn set_last_observation(&mut self, observation: String) {
+        if let Some(last) = self.trajectories.last_mut() {
+            last.observation = Some(observation);
+        }
     }
 }
