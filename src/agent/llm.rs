@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
+use crate::core::{Context, Thought, ThoughtType};
 use crate::core::{Action, Node};
-use crate::prompt::prompt::PromptEngine;
+use crate::prompt::PromptEngine;
 use crate::session::config::LLMConfig;
-use crate::session::context::{Context, Thought, ThoughtType};
 
 pub struct LLM {
     client: Client,
@@ -68,7 +68,7 @@ impl LLM {
 impl Node for LLM {
     async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>> {
         let system_prompt = ctx.system_prompt.clone();
-        let user_prompt = PromptEngine::new(ctx.clone()).render();
+        let user_prompt = PromptEngine::new(ctx.clone()).build_system_prompt();
         Ok(Some(json!({
             "system_prompt": system_prompt,
             "user_prompt": user_prompt
@@ -110,13 +110,6 @@ impl Node for LLM {
                 let cmd = parsed["command"].as_str().map(|s| s.to_string());
                 Action::Execute(cmd)
             }
-            "UseSkill" => {
-                let names = parsed["skills"]
-                    .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                    .unwrap_or_default();
-                Action::UseSkill(names)
-            }
             _ => Action::Pending,
         };
 
@@ -155,4 +148,3 @@ mod tests {
         assert!(ctx.trajectories.len() >= 2);
     }
 }
-

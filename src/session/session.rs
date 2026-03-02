@@ -2,17 +2,19 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 
-use crate::agent::agent::Agent;
+use crate::agent::Agent;
 use crate::agent::llm::LLM;
-use crate::core::Action;
+use crate::core::Context;
+use crate::core::{Action, Node};
 use crate::session::config::Config;
-use crate::session::context::Context;
+use crate::session::harness::Harness;
 
 const SYSTEM_PROMPT: &str = include_str!("../prompt/system_prompt.md");
 
 pub struct Session {
     pub agent: Agent,
     pub ctx: Context,
+    harness: Harness,
 }
 
 impl Session {
@@ -22,7 +24,7 @@ impl Session {
         let llm = LLM::from_config(&llm_config);
         let agent = Agent::new(llm, config.agent.max_iterations());
         let ctx = Context::new(SYSTEM_PROMPT.to_string());
-        Ok(Session { agent, ctx })
+        Ok(Session { agent, ctx, harness: Harness })
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -39,20 +41,25 @@ impl Session {
             }
 
             self.ctx.init_trajectory(input.to_string());
-            self.agent.run(&mut self.ctx).await?;
 
-            if let Some(last_traj) = self.ctx.trajectories.last() {
-                match &last_traj.action {
-                    Action::Completed => {
-                        if let Some(answer) = &last_traj.answer {
+            loop {
+                self.agent.run(&mut self.ctx).await?;
+
+                match self.ctx.trajectories.last().map(|t| &t.action) {
+                    Some(Action::Completed) => {
+                        if let Some(answer) = self.ctx.trajectories.last().and_then(|t| t.answer.as_ref()) {
                             println!("{}", answer);
-                        }
-                        else {
+                        } else {
                             println!("Task completed");
                         }
+                        break;
+                    }
+                    Some(Action::Execute(_)) => {
+                        self.harness.run(&mut self.ctx).await?;
                     }
                     _ => {
                         println!("Failed to complete task");
+                        break;
                     }
                 }
             }

@@ -13,7 +13,6 @@ You MUST always respond with a valid JSON object. Do not include any text outsid
     "content": "Your reasoning about the current step"
   },
   "action": "Running",
-  "skills": ["skill1", "skill2"],
   "answer": "Your final answer"
 }
 ```

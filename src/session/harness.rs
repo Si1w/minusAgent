@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use tokio::process::Command;
 
 use crate::core::{Action, Node};
-use crate::session::context::{Context, Thought, ThoughtType};
+use crate::core::{Context, Thought, ThoughtType};
 
 const DANGEROUS: &[&str] = &["rm -rf /", "mkfs", "> /dev/sd", "dd if="];
 
