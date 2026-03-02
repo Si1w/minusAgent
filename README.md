@@ -6,15 +6,31 @@ A minimal LLM agent framework in Rust
 
 ```
 src/
-├── core/           # Node trait, Context, Config, PromptEngine, Skill
-├── feature/        # Agent, LLM client, Command harness
-├── interface/      # CLI, Session
-└── instructions/   # System prompt
+├── core/           # Action, Context, Node trait (all core types in one place)
+│   └── skill.rs    # Skill, FrontMatter
+├── agent/          # Agent loop, LLM client
+│   └── llm.rs      # LLM HTTP client (implements Node)
+├── prompt/         # PromptEngine, system prompt
+├── session/        # Session, Harness, Config
+│   ├── config.rs   # Config, AgentConfig, LLMConfig
+│   ├── harness.rs  # Command executor (implements Node)
+│   └── session.rs  # Session orchestration
+└── cli/            # CLI entry point
 ```
 
-**Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — that all processing units implement.
+**Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — implemented by `LLM` and `Harness`.
 
-**Agent loop**: The `Agent` orchestrates LLM reasoning and command execution in a loop (max 10 iterations), stopping when the LLM returns a completed answer.
+**Agent loop**: `Agent` calls `LLM` in a loop until the action is not `Running` (i.e., `Completed` or `Execute`), bounded by `max_iterations`.
+
+**Session loop**: `Session` drives multiple rounds of user interaction. For each input, it alternates between `Agent` (LLM reasoning) and `Harness` (command execution) until `Completed`.
+
+```
+Session (user input loop)
+  └── Agent (LLM loop, bounded by max_iterations)
+        └── Harness (command execution, triggered by Execute action)
+```
+
+**Safety**: `Harness` blocks a configurable blacklist of destructive commands (e.g. `rm -rf /`, `mkfs`) before prompting the user for approval.
 
 ## Quick Start
 
@@ -31,7 +47,7 @@ minusagent
 # Or explicitly
 minusagent new
 
-# Start with a different LLM
+# Start with a specific LLM
 minusagent --llm codestral-latest
 ```
 
@@ -55,6 +71,25 @@ Config file: `~/.minusagent/config.json`
   ]
 }
 ```
+
+## LLM Response Format
+
+The LLM must respond with JSON in the following format:
+
+```json
+{
+  "thought": {
+    "thought_type": "Planning | Solving | GoalSetting",
+    "content": "..."
+  },
+  "action": "Running | Completed | Execute",
+  "command": "shell command here",
+  "answer": "final answer here"
+}
+```
+
+- `command` is required when `action` is `Execute`
+- `answer` is required when `action` is `Completed`
 
 ## Testing
 
