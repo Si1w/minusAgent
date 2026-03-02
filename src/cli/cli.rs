@@ -3,8 +3,8 @@ use std::fs;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::core::config;
-use crate::interface::session::Session;
+use crate::session::config;
+use crate::session::session::Session;
 
 #[derive(Parser)]
 #[command(name = "MinusAgent")]

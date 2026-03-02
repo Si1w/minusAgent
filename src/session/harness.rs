@@ -8,8 +8,10 @@ use crossterm::terminal;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use crate::core::context::{Context, Thought, ThoughtType};
 use crate::core::{Action, Node};
+use crate::session::context::{Context, Thought, ThoughtType};
+
+const DANGEROUS: &[&str] = &["rm -rf /", "mkfs", "> /dev/sd", "dd if="];
 
 pub struct Harness;
 
@@ -32,6 +34,10 @@ impl Node for Harness {
             Some(cmd) => cmd,
             None => return Ok(None),
         };
+
+        if DANGEROUS.iter().any(|p| cmd.contains(p)) {
+            return Ok(Some(json!({ "output": "[denied] dangerous command blocked" })));
+        }
 
         print!("Execute: {} [y/n] ", cmd);
         io::stdout().flush()?;

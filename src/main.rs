@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 
-use minusagent::interface::cli::Cli;
+use minusagent::cli::cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<()> {

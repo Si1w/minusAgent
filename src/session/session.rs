@@ -2,13 +2,13 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 
-use crate::core::config::Config;
-use crate::core::context::Context;
+use crate::agent::agent::Agent;
+use crate::agent::llm::LLM;
 use crate::core::Action;
-use crate::feature::agent::Agent;
-use crate::feature::llm::LLM;
+use crate::session::config::Config;
+use crate::session::context::Context;
 
-const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
+const SYSTEM_PROMPT: &str = include_str!("../prompt/system_prompt.md");
 
 pub struct Session {
     pub agent: Agent,

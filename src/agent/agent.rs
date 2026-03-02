@@ -1,9 +1,9 @@
 use anyhow::Result;
 
-use crate::core::context::Context;
+use crate::agent::llm::LLM;
 use crate::core::{Action, Node};
-use crate::feature::harness::Harness;
-use crate::feature::llm::LLM;
+use crate::session::context::Context;
+use crate::session::harness::Harness;
 
 pub struct Agent {
     llm: LLM,

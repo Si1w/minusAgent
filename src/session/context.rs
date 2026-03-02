@@ -1,4 +1,4 @@
-use crate::core::node::Action;
+use crate::core::Action;
 
 #[derive(Debug, Clone)]
 pub enum ThoughtType {

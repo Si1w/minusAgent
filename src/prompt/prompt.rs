@@ -1,4 +1,5 @@
-use crate::core::{context::Context, skill::FrontMatter};
+use crate::core::skill::FrontMatter;
+use crate::session::context::Context;
 
 pub struct PromptEngine {
     pub context: Context,

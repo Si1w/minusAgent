@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::core::context::Context;
+use crate::session::context::Context;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Action {

@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::core::config::LLMConfig;
-use crate::core::context::{Context, Thought, ThoughtType};
-use crate::core::prompt::PromptEngine;
 use crate::core::{Action, Node};
+use crate::prompt::prompt::PromptEngine;
+use crate::session::config::LLMConfig;
+use crate::session::context::{Context, Thought, ThoughtType};
 
 pub struct LLM {
     client: Client,
@@ -129,9 +129,9 @@ impl Node for LLM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::Config;
+    use crate::session::config::Config;
 
-    const SYSTEM_PROMPT: &str = include_str!("../instructions/system_prompt.md");
+    const SYSTEM_PROMPT: &str = include_str!("../prompt/system_prompt.md");
 
     #[tokio::test]
     async fn test_message() {
