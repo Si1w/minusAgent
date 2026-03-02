@@ -42,12 +42,7 @@ Your current status.
 |---|---|
 | `Running` | You need further reasoning to proceed |
 | `Execute` | Execute a shell command. Requires `command` field |
-| `UseSkill` | Activate one or more skills by name. Requires `skills` field with an array of skill names |
 | `Completed` | The task is fully done |
-
-### skills
-
-Optional. An array of skill names to activate from the Available Skills list. Only present when `action` is `UseSkill`.
 
 ### command
 

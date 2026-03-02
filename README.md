@@ -2,6 +2,21 @@
 
 A minimal LLM agent framework in Rust
 
+## Feature Track
+
+- [x] Agent Loop
+- [x] Harness
+- [~] Session Management
+- [] Skills
+- [] Channel
+- [] Gateway
+- [] Memory
+- [] Heartbeat
+- [] Delivery
+- [] Resilience
+- [] Concurrency
+- [] Safety Guards
+
 ## Architecture
 
 ```

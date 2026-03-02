@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::session::config;
-use crate::session::session::Session;
+use crate::session::Session;
 
 #[derive(Parser)]
 #[command(name = "MinusAgent")]
