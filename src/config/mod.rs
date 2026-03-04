@@ -57,7 +57,15 @@ impl Config {
     }
 }
 
-pub fn config_path() -> PathBuf {
+pub fn base_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".minusagent").join("config.json")
+    PathBuf::from(home).join(".minusagent")
+}
+
+pub fn config_path() -> PathBuf {
+    base_dir().join("config.json")
+}
+
+pub fn sessions_dir() -> PathBuf {
+    base_dir().join("sessions")
 }

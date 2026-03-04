@@ -7,42 +7,43 @@ A minimal LLM agent framework in Rust
 - [x] Agent Loop
 - [x] Harness
 - [~] Session Management
-- [] Skills
-- [] Channel
-- [] Gateway
-- [] Memory
-- [] Heartbeat
-- [] Delivery
-- [] Resilience
-- [] Concurrency
-- [] Safety Guards
+- [ ] Skills
+- [ ] Channel
+- [ ] Gateway
+- [x] Memory
+- [ ] Heartbeat
+- [ ] Delivery
+- [ ] Resilience
+- [ ] Concurrency
+- [ ] Safety Guards
 
 ## Architecture
 
 ```
 src/
 ├── core/           # Action, Context, Node trait (all core types in one place)
-│   └── skill.rs    # Skill, FrontMatter
+├── config/         # Config, path management (base_dir, config_path, sessions_dir)
 ├── agent/          # Agent loop, LLM client
 │   └── llm.rs      # LLM HTTP client (implements Node)
+├── memory/         # Session persistence (save/load/list)
 ├── prompt/         # PromptEngine, system prompt
-├── session/        # Session, Harness, Config
-│   ├── config.rs   # Config, AgentConfig, LLMConfig
-│   ├── harness.rs  # Command executor (implements Node)
-│   └── session.rs  # Session orchestration
-└── cli/            # CLI entry point
+├── session/        # Session, Harness
+│   └── harness.rs  # Command executor (implements Node)
+└── cli/            # CLI entry point, input loop, command dispatch
 ```
 
 **Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — implemented by `LLM` and `Harness`.
 
 **Agent loop**: `Agent` calls `LLM` in a loop until the action is not `Running` (i.e., `Completed` or `Execute`), bounded by `max_iterations`.
 
-**Session loop**: `Session` drives multiple rounds of user interaction. For each input, it alternates between `Agent` (LLM reasoning) and `Harness` (command execution) until `Completed`.
+**Session**: `Session` handles a single query by alternating between `Agent` (LLM reasoning) and `Harness` (command execution) until `Completed`. The input loop lives in the CLI layer.
 
 ```
-Session (user input loop)
-  └── Agent (LLM loop, bounded by max_iterations)
-        └── Harness (command execution, triggered by Execute action)
+CLI (user input loop, command dispatch)
+  ├── Session.query() (agent/harness loop per query)
+  │     └── Agent (LLM loop, bounded by max_iterations)
+  │           └── Harness (command execution, triggered by Execute action)
+  └── Memory (save/load/list via /save, /list, resume commands)
 ```
 
 **Safety**: `Harness` blocks a configurable blacklist of destructive commands (e.g. `rm -rf /`, `mkfs`) before prompting the user for approval.
@@ -64,6 +65,15 @@ minusagent new
 
 # Start with a specific LLM
 minusagent --llm codestral-latest
+
+# Save session (inside a running session)
+> /save
+
+# List saved sessions
+minusagent list
+
+# Resume a saved session
+minusagent resume 20260304_153021
 ```
 
 ## Configuration

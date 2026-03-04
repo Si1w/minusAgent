@@ -1,10 +1,9 @@
-pub mod config;
 pub mod harness;
 
-use std::io::{self, Write};
 use anyhow::Result;
 use harness::Harness;
-use config::Config;
+
+use crate::config::Config;
 
 use crate::agent::Agent;
 use crate::agent::llm::LLM;
@@ -29,40 +28,27 @@ impl Session {
         Ok(Session { agent, ctx, harness: Harness })
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn query(&mut self, input: &str) -> Result<()> {
+        self.ctx.init_trajectory(input.to_string());
+
         loop {
-            print!("> ");
-            io::stdout().flush()?;
+            self.agent.run(&mut self.ctx).await?;
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let input = input.trim();
-
-            if input.is_empty() || input == "exit" {
-                break;
-            }
-
-            self.ctx.init_trajectory(input.to_string());
-
-            loop {
-                self.agent.run(&mut self.ctx).await?;
-
-                match self.ctx.trajectories.last().map(|t| &t.action) {
-                    Some(Action::Completed) => {
-                        if let Some(answer) = self.ctx.trajectories.last().and_then(|t| t.answer.as_ref()) {
-                            println!("{}", answer);
-                        } else {
-                            println!("Task completed");
-                        }
-                        break;
+            match self.ctx.trajectories.last().map(|t| &t.action) {
+                Some(Action::Completed) => {
+                    if let Some(answer) = self.ctx.trajectories.last().and_then(|t| t.answer.as_ref()) {
+                        println!("{}", answer);
+                    } else {
+                        println!("Task completed");
                     }
-                    Some(Action::Execute(_)) => {
-                        self.harness.run(&mut self.ctx).await?;
-                    }
-                    _ => {
-                        println!("Failed to complete task");
-                        break;
-                    }
+                    break;
+                }
+                Some(Action::Execute(_)) => {
+                    self.harness.run(&mut self.ctx).await?;
+                }
+                _ => {
+                    println!("Failed to complete task");
+                    break;
                 }
             }
         }

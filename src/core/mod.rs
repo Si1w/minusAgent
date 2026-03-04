@@ -1,8 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum Action {
     #[default]
     Pending,
@@ -11,7 +12,7 @@ pub enum Action {
     Execute(Option<String>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ThoughtType {
     None,
     Planning,
@@ -19,13 +20,13 @@ pub enum ThoughtType {
     GoalSetting,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Thought {
     pub thought_type: ThoughtType,
     pub content: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Trajectory {
     pub thought: Thought,
     pub action: Action,
@@ -33,7 +34,7 @@ pub struct Trajectory {
     pub answer: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Context {
     pub system_prompt: String,
     pub trajectories: Vec<Trajectory>,

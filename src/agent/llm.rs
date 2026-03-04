@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use crate::core::{Context, Thought, ThoughtType};
 use crate::core::{Action, Node};
 use crate::prompt::PromptEngine;
-use crate::session::config::LLMConfig;
+use crate::config::LLMConfig;
 
 pub struct LLM {
     client: Client,
@@ -122,7 +122,7 @@ impl Node for LLM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::config::Config;
+    use crate::config::Config;
 
     const SYSTEM_PROMPT: &str = include_str!("../prompt/system_prompt.md");
 
