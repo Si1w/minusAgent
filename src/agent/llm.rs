@@ -110,6 +110,12 @@ impl Node for LLM {
                 let cmd = parsed["command"].as_str().map(|s| s.to_string());
                 Action::Execute(cmd)
             }
+            "UseSkill" => {
+                let skills = parsed["skills"].as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                Action::UseSkill(skills)
+            }
             _ => Action::Pending,
         };
 

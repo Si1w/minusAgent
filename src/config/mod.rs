@@ -69,3 +69,7 @@ pub fn config_path() -> PathBuf {
 pub fn sessions_dir() -> PathBuf {
     base_dir().join("sessions")
 }
+
+pub fn skills_dir() -> PathBuf {
+    base_dir().join("skills")
+}

@@ -10,6 +10,7 @@ pub enum Action {
     Running,
     Completed,
     Execute(Option<String>),
+    UseSkill(Vec<String>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,5 +81,11 @@ impl Context {
             observation,
             answer,
         });
+    }
+
+    pub fn set_last_observation(&mut self, observation: String) {
+        if let Some(last) = self.trajectories.last_mut() {
+            last.observation = Some(observation);
+        }
     }
 }

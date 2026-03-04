@@ -7,7 +7,7 @@ A minimal LLM agent framework in Rust
 - [x] Agent Loop
 - [x] Harness
 - [~] Session Management
-- [ ] Skills
+- [x] Skills
 - [ ] Channel
 - [ ] Gateway
 - [x] Memory
@@ -27,6 +27,7 @@ src/
 │   └── llm.rs      # LLM HTTP client (implements Node)
 ├── memory/         # Session persistence (save/load/list)
 ├── prompt/         # PromptEngine, system prompt
+├── skill/          # Skill discovery and registry (SKILL.md format)
 ├── session/        # Session, Harness
 │   └── harness.rs  # Command executor (implements Node)
 └── cli/            # CLI entry point, input loop, command dispatch
@@ -40,9 +41,11 @@ src/
 
 ```
 CLI (user input loop, command dispatch)
-  ├── Session.query() (agent/harness loop per query)
-  │     └── Agent (LLM loop, bounded by max_iterations)
-  │           └── Harness (command execution, triggered by Execute action)
+  ├── Session.query() (agent/harness/skill loop per query)
+  │     ├── Agent (LLM loop, bounded by max_iterations)
+  │     │     ├── Harness (command execution, triggered by Execute action)
+  │     │     └── SkillRegistry (skill activation, triggered by UseSkill action)
+  │     └── SkillRegistry (discovery at startup, metadata injected into system prompt)
   └── Memory (save/load/list via /save, /list, resume commands)
 ```
 
@@ -107,13 +110,15 @@ The LLM must respond with JSON in the following format:
     "thought_type": "Planning | Solving | GoalSetting",
     "content": "..."
   },
-  "action": "Running | Completed | Execute",
+  "action": "Running | Completed | Execute | UseSkill",
   "command": "shell command here",
+  "skills": ["skill-name"],
   "answer": "final answer here"
 }
 ```
 
 - `command` is required when `action` is `Execute`
+- `skills` is required when `action` is `UseSkill`
 - `answer` is required when `action` is `Completed`
 
 ## Testing
