@@ -6,26 +6,28 @@ A general-purpose ReAct agent framework in Rust. All capabilities (tool use, MCP
 
 ```
 ┌─────────────────────────────────────────┐
-│              Transport Layer             │
-│         (CLI / Discord / HTTP)           │
-│  Thin wrapper: input → session, output   │
+│              Transport Layer            │
+│         (CLI / Discord / HTTP)          │
+│  Thin wrapper: input → session, output  │
 └──────────────────┬──────────────────────┘
                    │
 ┌──────────────────▼──────────────────────┐
-│               Session                    │
-│  Manages conversation state & history    │
+│               Session                   │
+│  Orchestrates agent, context, harness   │
+│  ┌─────────────────────────────────┐    │
+│  │  Context (message history)      │    │
+│  └─────────────────────────────────┘    │
 └──────────────────┬──────────────────────┘
                    │
 ┌──────────────────▼──────────────────────┐
-│             Agent (ReAct Loop)           │
+│             Agent (ReAct Loop)          │
 │  LLM call → parse action → dispatch     │
 └─────┬────────────────────────┬──────────┘
       │                        │
 ┌─────▼─────┐          ┌──────▼──────┐
-│  LLM Node │          │   Harness   │
-│  (prep →  │          │  (execute   │
-│  exec →   │          │   skill,    │
-│  post)    │          │   capture   │
+│    LLM    │          │   Harness   │
+│  (chat    │          │  (execute   │
+│   API)    │          │   skill,    │
 └───────────┘          │   observe)  │
                        └──────┬──────┘
                               │
@@ -43,16 +45,16 @@ src/
 ├── main.rs              # CLI entry point
 ├── lib.rs               # Public API
 ├── core/
-│   ├── mod.rs           # Node trait, Outcome, Context
-│   ├── agent.rs         # ReAct loop logic
-│   └── session.rs       # Session management & persistence
-├── llm/
-│   └── mod.rs           # LLM node (OpenAI-compatible API)
+│   ├── mod.rs           # Node trait, Outcome
+│   ├── context.rs       # Context: conversation message history
+│   ├── agent.rs         # Agent: ReAct loop (Node)
+│   ├── harness.rs       # Harness: command execution via Node pipeline
+│   └── llm.rs           # LLM client (structured output, JSON Schema)
+├── session/
+│   └── mod.rs           # Session: orchestrates agent, context, harness
 ├── skill/
 │   ├── mod.rs           # Skill trait, registry, discovery
 │   └── loader.rs        # SKILL.md parser (frontmatter + body)
-├── harness/
-│   └── mod.rs           # Skill execution environment
 ├── config/
 │   └── mod.rs           # Config loading & management
 └── transport/
@@ -62,13 +64,16 @@ src/
 ## Implementation Phases
 
 ### Phase 1: Foundation
-- [ ] Config module: load/validate `config.json`
-- [ ] Skill loader: parse SKILL.md (frontmatter + body)
-- [ ] Skill registry: discover and register skills from configured paths
+- [x] Config module: load/validate `config.json`
+- [x] Skill loader: parse SKILL.md (frontmatter + body)
+- [x] Skill registry: discover and register skills from configured paths
 
 ### Phase 2: Agent Loop
-- [ ] Agent ReAct loop: LLM call → parse response → dispatch skill → observe → loop
-- [ ] Session: conversation state, multi-turn context management
+- [x] LLM client: structured output with JSON Schema, ThoughtType enum
+- [x] Context: conversation message history management
+- [x] Harness: command execution via Node pipeline, dangerous command blocking
+- [x] Agent ReAct loop: LLM call → parse response → dispatch skill → observe → loop
+- [x] Session: orchestrator for agent, context, harness
 - [ ] Error handling: user interrupt vs environment failure
 
 ### Phase 3: Persistence & CLI

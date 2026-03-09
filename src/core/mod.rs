@@ -1,7 +1,11 @@
-use async_trait::async_trait;
-use serde_json::Value;
+pub mod agent;
+pub mod context;
+pub mod harness;
+pub mod llm;
 
-pub type Context = Vec<Value>;
+use async_trait::async_trait;
+
+use crate::core::context::Context;
 
 #[derive(Debug, Clone)]
 pub enum Outcome {

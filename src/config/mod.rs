@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub agent: AgentConfig,
-    pub llm: Vec<LlmConfig>,
+    pub llm: Vec<LLMConfig>,
     #[serde(default)]
     pub skills: SkillsConfig,
 }
@@ -15,8 +15,8 @@ pub struct AgentConfig {
     pub max_steps: u32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct LlmConfig {
+#[derive(Debug, Clone, Deserialize)]
+pub struct LLMConfig {
     pub name: String,
     pub model: String,
     pub base_url: String,
@@ -29,8 +29,6 @@ pub struct LlmConfig {
 pub struct SkillsConfig {
     #[serde(default)]
     pub paths: Vec<String>,
-    #[serde(default)]
-    pub disabled: Vec<String>,
 }
 
 fn default_max_tokens() -> u32 {
@@ -60,7 +58,7 @@ impl Config {
     }
 }
 
-impl LlmConfig {
+impl LLMConfig {
     pub fn api_key(&self) -> Result<String, String> {
         std::env::var(&self.api_key_env)
             .map_err(|_| format!("environment variable {} is not set", self.api_key_env))

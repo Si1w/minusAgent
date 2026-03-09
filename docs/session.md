@@ -2,13 +2,18 @@
 
 ## Definition
 
-A session represents one continuous agent interaction. It holds:
+A session is the top-level orchestrator for a single agent interaction. It coordinates:
 
-- Conversation history (messages between user, agent, and environment)
-- Active skill states
-- Configuration snapshot
+- **Context**: Conversation history (managed by `Context`)
+- **Agent**: ReAct loop execution
+- **Harness**: Skill execution environment
+- **Config**: Configuration snapshot
 
-## Message Format
+Session receives user input from the transport layer, drives the agent loop, and returns the final answer.
+
+## Context (Message History)
+
+Context manages the ordered message history. Each message has one of three roles:
 
 ```json
 [
@@ -17,6 +22,19 @@ A session represents one continuous agent interaction. It holds:
   { "role": "observation", "skill": "skill-name", "outcome": "success", "content": "..." }
 ]
 ```
+
+Context is responsible for:
+
+- Appending user, assistant, and observation messages
+- Exporting messages in OpenAI-compatible format for LLM consumption
+
+## Session Lifecycle
+
+1. Transport receives user input
+2. Session appends user message to Context
+3. Session runs the agent loop (LLM → actions → harness → observations → loop)
+4. Agent loop terminates (answer, max_steps, or interrupt)
+5. Session returns the result to transport
 
 ## Persistence (User-Triggered)
 

@@ -19,7 +19,6 @@ impl SkillRegistry {
     pub fn discover(
         &mut self,
         search_paths: &[PathBuf],
-        disabled: &[String],
     ) -> Result<(), String> {
         for base in search_paths {
             if !base.is_dir() {
@@ -38,9 +37,6 @@ impl SkillRegistry {
                     continue;
                 }
                 let meta = loader::parse_frontmatter(&skill_md)?;
-                if disabled.contains(&meta.name) {
-                    continue;
-                }
                 self.skills.insert(meta.name.clone(), meta);
             }
         }

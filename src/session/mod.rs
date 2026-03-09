@@ -1,69 +1,66 @@
-pub mod harness;
-
-use anyhow::Result;
-use harness::Harness;
-
 use crate::config::Config;
-use crate::agent::Agent;
-use crate::agent::llm::LLM;
-use crate::core::{Action, Context, Node};
-use crate::skill::SkillRegistry;
+use crate::core::agent::{Agent, AgentResult};
+use crate::core::context::Context;
+use crate::core::llm::LLMClient;
+use crate::skill::registry::SkillRegistry;
 
-const SYSTEM_PROMPT: &str = include_str!("../prompt/system_prompt.md");
-
+/// Top-level orchestrator for a single agent interaction.
+///
+/// Session coordinates Context, Agent, and SkillRegistry.
+/// It receives user input from the transport layer, drives the
+/// agent loop, and returns the final result.
+///
+/// # Fields
+/// - `context`: The conversation message history.
+/// - `agent`: The ReAct loop agent.
 pub struct Session {
-    pub agent: Agent,
-    pub ctx: Context,
-    harness: Harness,
-    skills: SkillRegistry,
+    context: Context,
+    agent: Agent,
 }
 
 impl Session {
-    pub fn new(llm_name: Option<&str>) -> Result<Self> {
-        let config = Config::load()?;
-        let llm_config = config.get_llm(llm_name)?;
-        let llm = LLM::from_config(&llm_config);
-        let agent = Agent::new(llm, config.agent.max_iterations());
-        let skills = SkillRegistry::new();
+    /// Creates a new session from the given configuration.
+    ///
+    /// Initializes the LLM client, discovers skills, and builds the agent.
+    ///
+    /// # Arguments
+    /// - `config`: The application configuration.
+    ///
+    /// # Returns
+    /// A configured `Session` or an error string.
+    pub fn new(config: &Config) -> Result<Self, String> {
+        let llm_config = config
+            .llm
+            .first()
+            .ok_or("no LLM configured")?
+            .clone();
 
-        let mut system_prompt = SYSTEM_PROMPT.to_string();
-        if let Some(skills_prompt) = skills.metadata_prompt() {
-            system_prompt.push_str("\n\n");
-            system_prompt.push_str(&skills_prompt);
+        let llm = LLMClient::new(llm_config)?;
+
+        let mut registry = SkillRegistry::new();
+        let mut search_paths = SkillRegistry::default_search_paths();
+        for p in &config.skills.paths {
+            search_paths.push(p.into());
         }
-        let ctx = Context::new(system_prompt);
+        registry.discover(&search_paths)?;
 
-        Ok(Session { agent, ctx, harness: Harness, skills })
+        let agent = Agent::new(llm, registry, config.agent.max_steps);
+
+        Ok(Self {
+            context: Context::new(),
+            agent,
+        })
     }
 
-    pub async fn query(&mut self, input: &str) -> Result<()> {
-        self.ctx.init_trajectory(input.to_string());
-
-        loop {
-            self.agent.run(&mut self.ctx).await?;
-
-            match self.ctx.trajectories.last().map(|t| &t.action) {
-                Some(Action::Completed) => {
-                    if let Some(answer) = self.ctx.trajectories.last().and_then(|t| t.answer.as_ref()) {
-                        println!("{}", answer);
-                    } else {
-                        println!("Task completed");
-                    }
-                    break;
-                }
-                Some(Action::Execute(_)) => {
-                    self.harness.run(&mut self.ctx).await?;
-                }
-                Some(Action::UseSkill(names)) => {
-                    let instructions = self.skills.activate(names);
-                    self.ctx.set_last_observation(instructions);
-                }
-                _ => {
-                    println!("Failed to complete task");
-                    break;
-                }
-            }
-        }
-        Ok(())
+    /// Sends a user message and runs the agent loop to produce a response.
+    ///
+    /// # Arguments
+    /// - `input`: The user's input text.
+    ///
+    /// # Returns
+    /// The agent's final answer, an error, or a max-steps notification.
+    pub async fn send(&mut self, input: String) -> AgentResult {
+        self.context.add_user_message(input);
+        self.agent.run(&mut self.context).await
     }
 }
