@@ -1,75 +1,68 @@
+use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::Result;
-use serde::Deserialize;
-
-const DEFAULT_MAX_TOKENS: usize = 4096;
-const DEFAULT_MAX_ITERATIONS: usize = 10;
-
-#[derive(Deserialize, Clone)]
-pub struct AgentConfig {
-    pub max_iterations: Option<usize>,
-    pub default_llm: String,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct LLMConfig {
-    pub model: String,
-    pub base_url: String,
-    pub api_key: String,
-    pub max_tokens: Option<usize>,
-}
-
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 pub struct Config {
     pub agent: AgentConfig,
-    pub llm: Vec<LLMConfig>,
+    pub llm: Vec<LlmConfig>,
+    #[serde(default)]
+    pub skills: SkillsConfig,
 }
 
-impl LLMConfig {
-    pub fn max_tokens(&self) -> usize {
-        self.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS)
-    }
+#[derive(Debug, Deserialize)]
+pub struct AgentConfig {
+    pub max_steps: u32,
 }
 
-impl AgentConfig {
-    pub fn max_iterations(&self) -> usize {
-        self.max_iterations.unwrap_or(DEFAULT_MAX_ITERATIONS)
-    }
+#[derive(Debug, Deserialize)]
+pub struct LlmConfig {
+    pub name: String,
+    pub model: String,
+    pub base_url: String,
+    pub api_key_env: String,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SkillsConfig {
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+
+fn default_max_tokens() -> u32 {
+    4096
+}
+
+fn config_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("cannot resolve home directory")
+        .join(".minusagent")
+        .join("config.json")
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
-        dotenvy::dotenv().ok();
+    pub fn load() -> Result<Self, String> {
         let path = config_path();
-        let content = fs::read_to_string(&path)?;
-        let config: Config = serde_json::from_str(&content)?;
-        Ok(config)
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("failed to parse {}: {}", path.display(), e))
     }
 
-    pub fn get_llm(&self, model: Option<&str>) -> Result<LLMConfig> {
-        let target = model.unwrap_or(&self.agent.default_llm);
-        self.llm.iter()
-            .find(|l| l.model == target)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("'{}' not found in config", target))
+    pub fn load_from(path: &str) -> Result<Self, String> {
+        let content =
+            fs::read_to_string(path).map_err(|e| format!("failed to read {}: {}", path, e))?;
+        serde_json::from_str(&content).map_err(|e| format!("failed to parse {}: {}", path, e))
     }
 }
 
-pub fn base_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".minusagent")
-}
-
-pub fn config_path() -> PathBuf {
-    base_dir().join("config.json")
-}
-
-pub fn sessions_dir() -> PathBuf {
-    base_dir().join("sessions")
-}
-
-pub fn skills_dir() -> PathBuf {
-    base_dir().join("skills")
+impl LlmConfig {
+    pub fn api_key(&self) -> Result<String, String> {
+        std::env::var(&self.api_key_env)
+            .map_err(|_| format!("environment variable {} is not set", self.api_key_env))
+    }
 }

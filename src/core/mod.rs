@@ -3,89 +3,41 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub enum Action {
-    #[default]
-    Pending,
-    Running,
-    Completed,
-    Execute(Option<String>),
-    UseSkill(Vec<String>),
+pub type Context = Vec<Value>;
+
+#[derive(Debug, Clone)]
+pub enum Outcome {
+    Success { output: String },
+    Failure { error: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ThoughtType {
-    None,
-    Planning,
-    Solving,
-    GoalSetting,
-}
+impl Outcome {
+    pub fn is_success(&self) -> bool {
+        matches!(self, Outcome::Success { .. })
+    }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Thought {
-    pub thought_type: ThoughtType,
-    pub content: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Trajectory {
-    pub thought: Thought,
-    pub action: Action,
-    pub observation: Option<String>,
-    pub answer: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Context {
-    pub system_prompt: String,
-    pub trajectories: Vec<Trajectory>,
+    pub fn is_failure(&self) -> bool {
+        matches!(self, Outcome::Failure { .. })
+    }
 }
 
 #[async_trait]
 pub trait Node: Send + Sync {
-    async fn prep(&mut self, ctx: &Context) -> Result<Option<Value>>;
-    async fn exec(&mut self, prep_res: Option<Value>) -> Result<Option<Value>>;
-    async fn post(&mut self, prep_res: Option<Value>, exec_res: Option<Value>, ctx: &mut Context) -> Result<Action>;
+    async fn prep(&mut self, ctx: &Context) -> Outcome;
+    async fn exec(&mut self, ctx: &Context) -> Outcome;
+    async fn post(&mut self, ctx: &mut Context) -> Outcome;
 
-    async fn run(&mut self, ctx: &mut Context) -> Result<Action> {
-        let prep_res = self.prep(ctx).await?;
-        let exec_res = self.exec(prep_res.clone()).await?;
-        self.post(prep_res, exec_res, ctx).await
-    }
-}
-
-impl Context {
-    pub fn new(system_prompt: String) -> Self {
-        Self {
-            system_prompt,
-            trajectories: Vec::new(),
+    async fn run(&mut self, ctx: &mut Context) -> Outcome {
+        let prep = self.prep(ctx).await;
+        if prep.is_failure() {
+            return self.post(ctx).await;
         }
-    }
 
-    pub fn init_trajectory(&mut self, query: String) {
-        self.trajectories.push(Trajectory {
-            thought: Thought {
-                thought_type: ThoughtType::None,
-                content: None,
-            },
-            action: Action::Pending,
-            observation: Some(format!("User Query: {}", query)),
-            answer: None,
-        });
-    }
-
-    pub fn log_trajectory(&mut self, thought: Thought, action: Action, observation: Option<String>, answer: Option<String>) {
-        self.trajectories.push(Trajectory {
-            thought,
-            action,
-            observation,
-            answer,
-        });
-    }
-
-    pub fn set_last_observation(&mut self, observation: String) {
-        if let Some(last) = self.trajectories.last_mut() {
-            last.observation = Some(observation);
+        let exec = self.exec(ctx).await;
+        if exec.is_failure() {
+            return self.post(ctx).await;
         }
+
+        self.post(ctx).await
     }
 }

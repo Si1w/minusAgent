@@ -1,7 +1,11 @@
-.env
-.DS_Store
-config.json
-
+# Build
 /target
 
-/.claude
+# Environment
+.env
+
+# OS
+.DS_Store
+
+# IDE / Tools
+.claude/

@@ -1,128 +1,91 @@
 # minusAgent
 
-A minimal LLM agent framework in Rust
-
-## Feature Track
-
-- [x] Agent Loop
-- [x] Harness
-- [~] Session Management
-- [x] Skills
-- [ ] Channel
-- [ ] Gateway
-- [x] Memory
-- [ ] Heartbeat
-- [ ] Delivery
-- [ ] Resilience
-- [ ] Concurrency
-- [ ] Safety Guards
+A general-purpose ReAct agent framework in Rust. All capabilities (tool use, MCP, custom instructions) are packaged as skills following the [Agent Skills Specification](https://agentskills.io/specification).
 
 ## Architecture
 
 ```
+┌─────────────────────────────────────────┐
+│              Transport Layer             │
+│         (CLI / Discord / HTTP)           │
+│  Thin wrapper: input → session, output   │
+└──────────────────┬──────────────────────┘
+                   │
+┌──────────────────▼──────────────────────┐
+│               Session                    │
+│  Manages conversation state & history    │
+└──────────────────┬──────────────────────┘
+                   │
+┌──────────────────▼──────────────────────┐
+│             Agent (ReAct Loop)           │
+│  LLM call → parse action → dispatch     │
+└─────┬────────────────────────┬──────────┘
+      │                        │
+┌─────▼─────┐          ┌──────▼──────┐
+│  LLM Node │          │   Harness   │
+│  (prep →  │          │  (execute   │
+│  exec →   │          │   skill,    │
+│  post)    │          │   capture   │
+└───────────┘          │   observe)  │
+                       └──────┬──────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │      Skills       │
+                    │  (local/global/   │
+                    │   built-in/MCP)   │
+                    └───────────────────┘
+```
+
+## Module Plan
+
+```
 src/
-├── core/           # Action, Context, Node trait (all core types in one place)
-├── config/         # Config, path management (base_dir, config_path, sessions_dir)
-├── agent/          # Agent loop, LLM client
-│   └── llm.rs      # LLM HTTP client (implements Node)
-├── memory/         # Session persistence (save/load/list)
-├── prompt/         # PromptEngine, system prompt
-├── skill/          # Skill discovery and registry (SKILL.md format)
-├── session/        # Session, Harness
-│   └── harness.rs  # Command executor (implements Node)
-└── cli/            # CLI entry point, input loop, command dispatch
+├── main.rs              # CLI entry point
+├── lib.rs               # Public API
+├── core/
+│   ├── mod.rs           # Node trait, Outcome, Context
+│   ├── agent.rs         # ReAct loop logic
+│   └── session.rs       # Session management & persistence
+├── llm/
+│   └── mod.rs           # LLM node (OpenAI-compatible API)
+├── skill/
+│   ├── mod.rs           # Skill trait, registry, discovery
+│   └── loader.rs        # SKILL.md parser (frontmatter + body)
+├── harness/
+│   └── mod.rs           # Skill execution environment
+├── config/
+│   └── mod.rs           # Config loading & management
+└── transport/
+    └── cli.rs           # CLI transport (MVP)
 ```
 
-**Core abstraction**: The `Node` trait defines an async pipeline — `prep()`, `exec()`, `post()` — implemented by `LLM` and `Harness`.
+## Implementation Phases
 
-**Agent loop**: `Agent` calls `LLM` in a loop until the action is not `Running` (i.e., `Completed` or `Execute`), bounded by `max_iterations`.
+### Phase 1: Foundation
+- [ ] Config module: load/validate `config.json`
+- [ ] Skill loader: parse SKILL.md (frontmatter + body)
+- [ ] Skill registry: discover and register skills from configured paths
 
-**Session**: `Session` handles a single query by alternating between `Agent` (LLM reasoning) and `Harness` (command execution) until `Completed`. The input loop lives in the CLI layer.
+### Phase 2: Agent Loop
+- [ ] Agent ReAct loop: LLM call → parse response → dispatch skill → observe → loop
+- [ ] Session: conversation state, multi-turn context management
+- [ ] Error handling: user interrupt vs environment failure
 
-```
-CLI (user input loop, command dispatch)
-  ├── Session.query() (agent/harness/skill loop per query)
-  │     ├── Agent (LLM loop, bounded by max_iterations)
-  │     │     ├── Harness (command execution, triggered by Execute action)
-  │     │     └── SkillRegistry (skill activation, triggered by UseSkill action)
-  │     └── SkillRegistry (discovery at startup, metadata injected into system prompt)
-  └── Memory (save/load/list via /save, /list, resume commands)
-```
+### Phase 3: Persistence & CLI
+- [ ] Session persistence (optional): save/load JSON files
+- [ ] CLI transport: interactive REPL
+- [ ] Config CLI commands: view/edit config
 
-**Safety**: `Harness` blocks a configurable blacklist of destructive commands (e.g. `rm -rf /`, `mkfs`) before prompting the user for approval.
+### Phase 4: Advanced
+- [ ] MCP skill wrapper
+- [ ] Multi-agent skill execution
+- [ ] Additional transports (Discord, HTTP)
 
-## Quick Start
+## Docs
 
-```bash
-# Initialize config
-minusagent init
-
-# Edit your config
-vim ~/.minusagent/config.json
-
-# Start a session (default)
-minusagent
-
-# Or explicitly
-minusagent new
-
-# Start with a specific LLM
-minusagent --llm codestral-latest
-
-# Save session (inside a running session)
-> /save
-
-# List saved sessions
-minusagent list
-
-# Resume a saved session
-minusagent resume 20260304_153021
-```
-
-## Configuration
-
-Config file: `~/.minusagent/config.json`
-
-```json
-{
-  "agent": {
-    "max_iterations": 10,
-    "default_llm": "codestral-latest"
-  },
-  "llm": [
-    {
-      "model": "codestral-latest",
-      "base_url": "https://codestral.mistral.ai/v1/chat/completions",
-      "api_key": "your-api-key",
-      "max_tokens": 4096
-    }
-  ]
-}
-```
-
-## LLM Response Format
-
-The LLM must respond with JSON in the following format:
-
-```json
-{
-  "thought": {
-    "thought_type": "Planning | Solving | GoalSetting",
-    "content": "..."
-  },
-  "action": "Running | Completed | Execute | UseSkill",
-  "command": "shell command here",
-  "skills": ["skill-name"],
-  "answer": "final answer here"
-}
-```
-
-- `command` is required when `action` is `Execute`
-- `skills` is required when `action` is `UseSkill`
-- `answer` is required when `action` is `Completed`
-
-## Testing
-
-```bash
-cargo test
-```
+- [Agent Loop](docs/agent-loop.md) — ReAct loop, structured output, outcome, observation, error handling
+- [Skill](docs/skill.md) — Skill system, registration, progressive disclosure, MCP
+- [Harness](docs/harness.md) — Execution environment
+- [Session](docs/session.md) — Session management, persistence
+- [Config](docs/config.md) — Configuration schema
+- [Transport](docs/transport.md) — Transport layer (CLI, Discord, HTTP)
