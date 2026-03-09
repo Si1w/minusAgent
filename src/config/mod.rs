@@ -64,3 +64,99 @@ impl LLMConfig {
             .map_err(|_| format!("environment variable {} is not set", self.api_key_env))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_full_config() {
+        let json = r#"{
+            "agent": { "max_steps": 10 },
+            "llm": [{
+                "name": "test",
+                "model": "gpt-4",
+                "base_url": "https://api.example.com/v1/chat/completions",
+                "api_key_env": "TEST_API_KEY",
+                "max_tokens": 2048
+            }],
+            "skills": { "paths": ["/tmp/skills"] }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.agent.max_steps, 10);
+        assert_eq!(config.llm.len(), 1);
+        assert_eq!(config.llm[0].model, "gpt-4");
+        assert_eq!(config.llm[0].max_tokens, 2048);
+        assert_eq!(config.skills.paths, vec!["/tmp/skills"]);
+    }
+
+    #[test]
+    fn test_default_max_tokens() {
+        let json = r#"{
+            "agent": { "max_steps": 5 },
+            "llm": [{
+                "name": "test",
+                "model": "gpt-4",
+                "base_url": "https://api.example.com",
+                "api_key_env": "KEY"
+            }]
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.llm[0].max_tokens, 4096);
+    }
+
+    #[test]
+    fn test_default_skills_config() {
+        let json = r#"{
+            "agent": { "max_steps": 5 },
+            "llm": [{
+                "name": "test",
+                "model": "gpt-4",
+                "base_url": "https://api.example.com",
+                "api_key_env": "KEY"
+            }]
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.skills.paths.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_llm_providers() {
+        let json = r#"{
+            "agent": { "max_steps": 5 },
+            "llm": [
+                { "name": "a", "model": "gpt-4", "base_url": "https://a.com", "api_key_env": "A" },
+                { "name": "b", "model": "claude", "base_url": "https://b.com", "api_key_env": "B" }
+            ]
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.llm.len(), 2);
+        assert_eq!(config.llm[0].name, "a");
+        assert_eq!(config.llm[1].name, "b");
+    }
+
+    #[test]
+    fn test_missing_required_field() {
+        let json = r#"{ "agent": { "max_steps": 5 } }"#;
+        let result: Result<Config, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_api_key_missing_env() {
+        let config = LLMConfig {
+            name: "test".to_string(),
+            model: "gpt-4".to_string(),
+            base_url: "https://api.example.com".to_string(),
+            api_key_env: "NONEXISTENT_VAR_12345".to_string(),
+            max_tokens: 4096,
+        };
+        assert!(config.api_key().is_err());
+    }
+
+    #[test]
+    fn test_load_from_nonexistent_file() {
+        let result = Config::load_from("/tmp/nonexistent_minusagent_config.json");
+        assert!(result.is_err());
+    }
+}

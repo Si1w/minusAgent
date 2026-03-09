@@ -122,3 +122,95 @@ impl Node for Harness {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_blocked_detects_rm_rf() {
+        assert!(check_blocked("rm -rf /").is_some());
+        assert!(check_blocked("rm -rf ./build").is_none());
+        assert!(check_blocked("RM -RF /").is_some());
+    }
+
+    #[test]
+    fn test_check_blocked_detects_mkfs() {
+        assert!(check_blocked("mkfs.ext4 /dev/sda1").is_some());
+    }
+
+    #[test]
+    fn test_check_blocked_detects_dd() {
+        assert!(check_blocked("dd if=/dev/zero of=/dev/sda").is_some());
+    }
+
+    #[test]
+    fn test_check_blocked_allows_safe_commands() {
+        assert!(check_blocked("ls -la").is_none());
+        assert!(check_blocked("echo hello && cat file.txt").is_none());
+        assert!(check_blocked("rm file.txt").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_run_no_command_set() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_failure());
+    }
+
+    #[tokio::test]
+    async fn test_run_echo() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        harness.set_command("echo hello".to_string());
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_success());
+        if let Outcome::Success { output } = &outcome {
+            assert_eq!(output.trim(), "hello");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_blocked_command() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        harness.set_command("rm -rf /".to_string());
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_failure());
+    }
+
+    #[tokio::test]
+    async fn test_run_failing_command() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        harness.set_command("false".to_string());
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_failure());
+    }
+
+    #[tokio::test]
+    async fn test_run_chained_commands() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        harness.set_command("echo foo && echo bar".to_string());
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_success());
+        if let Outcome::Success { output } = &outcome {
+            assert!(output.contains("foo"));
+            assert!(output.contains("bar"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_pipe() {
+        let mut harness = Harness::new();
+        let mut ctx = Context::new();
+        harness.set_command("echo hello world | wc -w".to_string());
+        let outcome = harness.run(&mut ctx).await;
+        assert!(outcome.is_success());
+        if let Outcome::Success { output } = &outcome {
+            assert_eq!(output.trim(), "2");
+        }
+    }
+}
