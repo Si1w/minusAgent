@@ -1,6 +1,11 @@
-.env
-.DS_Store
-
+# Build
 /target
 
-/.claude
+# Environment
+.env
+
+# OS
+.DS_Store
+
+# IDE / Tools
+.claude/

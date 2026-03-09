@@ -3,35 +3,36 @@ use serde_json::Value;
 
 pub type Context = Vec<Value>;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Status {
-    Pending,
-    Running,
-    Success,
-    Failed,
+#[derive(Debug, Clone)]
+pub enum Outcome {
+    Success { output: String },
+    Failure { error: String },
 }
 
-#[derive(Debug, Clone)]
-pub struct Result {
-    pub status: Status,
-    pub value: Option<Value>,
-    pub error: Option<String>,
+impl Outcome {
+    pub fn is_success(&self) -> bool {
+        matches!(self, Outcome::Success { .. })
+    }
+
+    pub fn is_failure(&self) -> bool {
+        matches!(self, Outcome::Failure { .. })
+    }
 }
 
 #[async_trait]
 pub trait Node: Send + Sync {
-    async fn prep(&mut self, ctx: &Context) -> Result;
-    async fn exec(&mut self, ctx: &Context) -> Result;
-    async fn post(&mut self, ctx: &mut Context) -> Result;
+    async fn prep(&mut self, ctx: &Context) -> Outcome;
+    async fn exec(&mut self, ctx: &Context) -> Outcome;
+    async fn post(&mut self, ctx: &mut Context) -> Outcome;
 
-    async fn run(&mut self, ctx: &mut Context) -> Result {
-        let prep_result = self.prep(ctx).await;
-        if prep_result.status == Status::Failed {
+    async fn run(&mut self, ctx: &mut Context) -> Outcome {
+        let prep = self.prep(ctx).await;
+        if prep.is_failure() {
             return self.post(ctx).await;
         }
 
-        let exec_result = self.exec(ctx).await;
-        if exec_result.status == Status::Failed {
+        let exec = self.exec(ctx).await;
+        if exec.is_failure() {
             return self.post(ctx).await;
         }
 
