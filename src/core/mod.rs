@@ -1,13 +1,15 @@
 pub mod agent;
 pub mod context;
+pub mod guard;
 pub mod harness;
 pub mod llm;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::core::context::Context;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Outcome {
     Success { output: String },
     Failure { error: String },

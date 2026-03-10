@@ -5,37 +5,38 @@ A general-purpose ReAct agent framework in Rust. All capabilities (tool use, MCP
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│              Transport Layer            │
-│         (CLI / Discord / HTTP)          │
-│  Thin wrapper: input → session, output  │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│               Session                   │
-│  Orchestrates agent, context, harness   │
-│  ┌─────────────────────────────────┐    │
-│  │  Context (message history)      │    │
-│  └─────────────────────────────────┘    │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│             Agent (ReAct Loop)          │
-│  LLM call → parse action → dispatch     │
-└─────┬────────────────────────┬──────────┘
-      │                        │
-┌─────▼─────┐          ┌──────▼──────┐
-│    LLM    │          │   Harness   │
-│  (chat    │          │  (execute   │
-│   API)    │          │   skill,    │
-└───────────┘          │   observe)  │
-                       └──────┬──────┘
-                              │
-                    ┌─────────▼─────────┐
-                    │      Skills       │
-                    │  (local/global/   │
-                    │   built-in/MCP)   │
-                    └───────────────────┘
+┌───────────────────────────────────────────────┐
+│                Transport Layer                │
+│           (CLI / Discord / HTTP)              │
+│    Thin wrapper: input → session, output      │
+└───────────────────────┬───────────────────────┘
+                        │
+┌───────────────────────▼───────────────────────┐
+│                   Session                     │
+│    Orchestrates agent, context, harness       │
+│    ┌─────────────────────────────────────┐    │
+│    │     Context (message history)       │    │
+│    └─────────────────────────────────────┘    │
+│    ┌──────────────┐  ┌────────────────────┐   │
+│    │   Harness    │  │      Guard         │   │
+│    │  (execute)   │  │ (overflow protect) │   │
+│    └──────────────┘  └────────────────────┘   │
+└───────────────────────┬───────────────────────┘
+                        │
+┌───────────────────────▼───────────────────────┐
+│              Agent (ReAct Loop)               │
+│    LLM call → parse action → return to session│
+│    UseSkill: load instruction → continue      │
+│    Continue:  pure thinking  → continue       │
+│    Execute:   return command → session/harness│
+│    Completed: return answer  → session        │
+└───────────────┬───────────────────────────────┘
+                │
+        ┌───────▼───────┐ ┌─────────────┐
+        │      LLM      │ │             │
+        │  (chat API)   │◄┤   Skills    │
+        │  + summarize  │ │ (SKILL.md)  │
+        └───────────────┘ └─────────────┘
 ```
 
 ## Module Plan
@@ -47,9 +48,10 @@ src/
 ├── core/
 │   ├── mod.rs           # Node trait, Outcome
 │   ├── context.rs       # Context: conversation message history
-│   ├── agent.rs         # Agent: ReAct loop (Node)
+│   ├── agent.rs         # Agent: ReAct loop (returns Action to Session)
+│   ├── guard.rs         # ContextGuard: overflow protection wrapping LLMClient
 │   ├── harness.rs       # Harness: command execution via Node pipeline
-│   └── llm.rs           # LLM client (structured output, JSON Schema)
+│   └── llm.rs           # LLM client (structured output, summarize)
 ├── session/
 │   └── mod.rs           # Session: orchestrates agent, context, harness
 ├── skill/
@@ -72,19 +74,19 @@ src/
 - [x] LLM client: structured output with JSON Schema, ThoughtType enum
 - [x] Context: conversation message history management
 - [x] Harness: command execution via Node pipeline, dangerous command blocking
-- [x] Agent ReAct loop: LLM call → parse response → dispatch skill → observe → loop
+- [x] Agent ReAct loop: LLM call → parse action → return to Session for dispatch
+- [x] Action enum: `UseSkill` (load instructions), `Execute` (shell command), `Continue` (think), `Completed` (answer)
 - [x] Session: orchestrator for agent, context, harness
 
-### Phase 3: Session Persistence & Context Guard
+### Phase 3: Context Guard
+- [x] Context guard: wraps LLMClient with overflow protection, token tracking via API usage
+- [x] LLMClient `summarize()`: plain text LLM call for compaction (no structured output)
+- [x] Three-stage recovery: truncate observations → LLM-powered compact → fail
+- [x] Proactive compact: triggers when token usage exceeds 80% of context window
 - [ ] Session persistence: JSONL event log, create/switch/list sessions
-- [ ] Context guard: prevent context overflow with 3-stage strategy
-  - Stage 1: truncate oversized tool results (head-only, cap at 30% of budget)
-  - Stage 2: LLM-powered summarization of older messages, keep recent 20%
-  - Stage 3: hard error if still over budget
-- [ ] Token estimation (1 token ≈ 4 chars) and context budget tracking
 
 ### Phase 4: CLI Transport
-- [ ] CLI transport: interactive REPL with session commands (`/new`, `/list`, `/switch`)
+- [ ] CLI transport: interactive REPL with session commands (`/new`, `/skills`, `/switch`)
 - [ ] Context inspection command (`/context` with usage bar, `/compact` manual compression)
 - [ ] Error handling: user interrupt (Ctrl+C) vs environment failure
 - [ ] Config CLI commands: view/edit config
@@ -143,9 +145,9 @@ src/
 
 ## Docs
 
-- [Agent Loop](docs/agent-loop.md) — ReAct loop, structured output, outcome, observation, error handling
+- [Agent Loop](docs/agent-loop.md) — ReAct loop, Action enum, agent ↔ session boundary
 - [Skill](docs/skill.md) — Skill system, registration, progressive disclosure, MCP
 - [Harness](docs/harness.md) — Execution environment
-- [Session](docs/session.md) — Session management, persistence
+- [Session](docs/session.md) — Session management, context guard, persistence
 - [Config](docs/config.md) — Configuration schema
 - [Transport](docs/transport.md) — Transport layer (CLI, Discord, HTTP)

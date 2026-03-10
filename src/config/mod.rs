@@ -23,6 +23,8 @@ pub struct LLMConfig {
     pub api_key_env: String,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(default = "default_context_window")]
+    pub context_window: usize,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -33,6 +35,10 @@ pub struct SkillsConfig {
 
 fn default_max_tokens() -> u32 {
     4096
+}
+
+fn default_context_window() -> usize {
+    128_000
 }
 
 fn config_path() -> PathBuf {
@@ -150,6 +156,7 @@ mod tests {
             base_url: "https://api.example.com".to_string(),
             api_key_env: "NONEXISTENT_VAR_12345".to_string(),
             max_tokens: 4096,
+            context_window: 128_000,
         };
         assert!(config.api_key().is_err());
     }

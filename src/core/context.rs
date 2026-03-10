@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::core::Outcome;
@@ -9,7 +10,7 @@ use crate::core::llm::{LLMResponse, Thought};
 /// - `User`: Input from the user.
 /// - `Assistant`: LLM response with thought and optional actions/answer.
 /// - `Observation`: Result of a skill execution fed back to the LLM.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Message {
     User { content: String },
     Assistant { thought: Thought, raw: LLMResponse },
@@ -116,5 +117,15 @@ impl Context {
     /// Returns the number of messages in the conversation.
     pub fn len(&self) -> usize {
         self.messages.len()
+    }
+
+    /// Returns a reference to the message list.
+    pub fn messages(&self) -> &[Message] {
+        &self.messages
+    }
+
+    /// Returns a mutable reference to the message list.
+    pub fn messages_mut(&mut self) -> &mut Vec<Message> {
+        &mut self.messages
     }
 }
