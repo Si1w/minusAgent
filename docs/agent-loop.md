@@ -52,30 +52,42 @@ Each LLM step produces:
 
 ## Agent ↔ Session Boundary
 
-The Agent does NOT own the Harness. Responsibility split:
+`Action` is the unified signal throughout the pipeline. The Agent does NOT own the Harness. Responsibility split:
 
-- **Agent handles internally**: `UseSkill` (load instructions), `Continue` (loop)
-- **Agent returns to Session**: `Execute` (command), `Completed` (answer), `MaxSteps`, `Error`
-- **Session dispatches**: runs Harness for `Execute`, adds observation to Context, re-enters Agent
+- **Agent handles internally**: `UseSkill` (load instructions via PromptEngine), `Continue` (loop)
+- **Agent returns to Session**: `Execute`, `Completed` (including LLM errors and max steps)
+- **Session dispatches**: runs Harness (via `Node::run()`) for `Execute`, re-enters Agent loop
 
-```rust
-enum AgentResult {
-    Answer(String),
-    Execute { command: String },
-    MaxSteps,
-    Error(String),
-}
-```
+`Agent::run()` drives the inner loop. `Session::run()` drives the REPL (Agent ↔ Harness dispatch per turn).
 
 ## Termination Conditions
 
-- `Completed` action — agent returns `Answer`
-- `max_steps` reached — agent returns `MaxSteps`
+- `Completed` action — Agent returns to Session, Session returns the answer
+- `max_steps` reached — Agent returns `Completed { answer: "max steps reached" }`
 - User interrupts — agent stops immediately (session-level signal)
+
+## Node Pipeline
+
+The `Node` trait drives a prep → exec → post pipeline:
+
+```rust
+trait Node {
+    fn prep(&mut self, shared: &Context) -> Result<Value, String>;
+    fn exec(&mut self, prep_res: Value) -> Result<Value, String>;
+    fn post(&mut self, shared: &mut Context, prep_res: Value, exec_res: Value) -> Action;
+}
+```
+
+- `prep`: Read and preprocess data from shared store.
+- `exec`: Pure compute (LLM calls, shell commands). No access to shared.
+- `post`: Write results back to shared, return `Action` for flow control.
+- `run` (default): Drives prep → exec → post. Short-circuits to `Action::Completed` on error.
+
+Harness implements `Node`: prep validates the command, exec runs `sh -c`, post writes the observation to context and returns `Action::Continue`.
 
 ## Outcome
 
-Result of a single command execution (from Harness):
+Result stored in conversation history for observations:
 
 ```rust
 enum Outcome {

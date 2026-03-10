@@ -2,7 +2,7 @@
 
 ## Definition
 
-A session is the top-level orchestrator for a single agent interaction. It coordinates:
+A session is the top-level orchestrator for a multi-turn conversation. It coordinates:
 
 - **Context**: Conversation history (managed by `Context`)
 - **Agent**: ReAct loop execution
@@ -32,24 +32,16 @@ Context is responsible for:
 
 1. Transport receives user input
 2. Session appends user message to Context
-3. Session calls Agent (via ContextGuard for overflow protection)
-4. Agent returns `AgentResult`:
-   - `Answer` → Session returns result to transport
-   - `Execute` → Session runs Harness, adds observation to Context, goto 3
-   - `MaxSteps` / `Error` → Session handles error
-5. Session returns the result to transport
-
-## Context Guard
-
-Session uses `ContextGuard` (wrapping `LLMClient`) for overflow protection:
-
-- **Proactive**: after a successful call, if token usage > 80% of context window, compact
-- **Reactive**: on overflow error, three-stage recovery:
-  1. Truncate long observation content
-  2. Compact older messages via LLM summarization
-  3. Fail if still overflowing after 3 retries
-
-Compact replaces older messages with a summary + acknowledgment pair, preserving recent context.
+3. Session calls `Agent::run()`, which drives the inner loop:
+   - `UseSkill` → PromptEngine loads SKILL.md into Context → continue loop
+   - `Continue` → continue loop
+   - `Execute` → return to Session
+   - `Completed` → return to Session
+   - `max_steps` reached → return `Completed { answer: "max steps reached" }`
+4. Session dispatches on the returned `Action`:
+   - `Execute` → run Harness (`Node::run()`), which writes observation to Context via `post()`, goto 3
+   - `Completed` → return answer to transport
+5. Session returns the final `Action` to transport
 
 ## Persistence (User-Triggered)
 

@@ -2,43 +2,6 @@
 
 A general-purpose ReAct agent framework in Rust. All capabilities (tool use, MCP, custom instructions) are packaged as skills following the [Agent Skills Specification](https://agentskills.io/specification).
 
-## Architecture
-
-```
-┌───────────────────────────────────────────────┐
-│                Transport Layer                │
-│           (CLI / Discord / HTTP)              │
-│    Thin wrapper: input → session, output      │
-└───────────────────────┬───────────────────────┘
-                        │
-┌───────────────────────▼───────────────────────┐
-│                   Session                     │
-│    Orchestrates agent, context, harness       │
-│    ┌─────────────────────────────────────┐    │
-│    │     Context (message history)       │    │
-│    └─────────────────────────────────────┘    │
-│    ┌──────────────┐  ┌────────────────────┐   │
-│    │   Harness    │  │      Guard         │   │
-│    │  (execute)   │  │ (overflow protect) │   │
-│    └──────────────┘  └────────────────────┘   │
-└───────────────────────┬───────────────────────┘
-                        │
-┌───────────────────────▼───────────────────────┐
-│              Agent (ReAct Loop)               │
-│    LLM call → parse action → return to session│
-│    UseSkill: load instruction → continue      │
-│    Continue:  pure thinking  → continue       │
-│    Execute:   return command → session/harness│
-│    Completed: return answer  → session        │
-└───────────────┬───────────────────────────────┘
-                │
-        ┌───────▼───────┐ ┌─────────────┐
-        │      LLM      │ │             │
-        │  (chat API)   │◄┤   Skills    │
-        │  + summarize  │ │ (SKILL.md)  │
-        └───────────────┘ └─────────────┘
-```
-
 ## Module Plan
 
 ```
@@ -46,17 +9,16 @@ src/
 ├── main.rs              # CLI entry point
 ├── lib.rs               # Public API
 ├── core/
-│   ├── mod.rs           # Node trait, Outcome
-│   ├── context.rs       # Context: conversation message history
-│   ├── agent.rs         # Agent: ReAct loop (returns Action to Session)
-│   ├── guard.rs         # ContextGuard: overflow protection wrapping LLMClient
+│   ├── mod.rs           # Node trait, Action enum
+│   ├── context.rs       # Context: conversation history, skill catalog, Outcome
+│   ├── agent.rs         # Agent: ReAct loop (UseSkill/Continue internal, Execute/Completed to Session)
+│   ├── prompt.rs        # PromptEngine: system prompt builder, skill instruction loader
 │   ├── harness.rs       # Harness: command execution via Node pipeline
-│   └── llm.rs           # LLM client (structured output, summarize)
+│   └── llm.rs           # LLM client (structured output via Node pipeline)
 ├── session/
-│   └── mod.rs           # Session: orchestrates agent, context, harness
+│   └── mod.rs           # Session: REPL orchestrator for agent, context, harness
 ├── skill/
-│   ├── mod.rs           # Skill trait, registry, discovery
-│   └── loader.rs        # SKILL.md parser (frontmatter + body)
+│   └── mod.rs           # SkillRegistry, SkillMeta, SKILL.md parser
 ├── config/
 │   └── mod.rs           # Config loading & management
 └── transport/
@@ -79,10 +41,9 @@ src/
 - [x] Session: orchestrator for agent, context, harness
 
 ### Phase 3: Context Guard
-- [x] Context guard: wraps LLMClient with overflow protection, token tracking via API usage
-- [x] LLMClient `summarize()`: plain text LLM call for compaction (no structured output)
-- [x] Three-stage recovery: truncate observations → LLM-powered compact → fail
-- [x] Proactive compact: triggers when token usage exceeds 80% of context window
+- [ ] Context guard: overflow protection wrapping LLMClient, token tracking via API usage
+- [ ] Three-stage recovery: truncate observations → LLM-powered compact → fail
+- [ ] Proactive compact: triggers when token usage exceeds threshold
 - [ ] Session persistence: JSONL event log, create/switch/list sessions
 
 ### Phase 4: CLI Transport

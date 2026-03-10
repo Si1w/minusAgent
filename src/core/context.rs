@@ -1,8 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::Outcome;
 use crate::core::llm::{LLMResponse, Thought};
+use crate::skill::SkillMeta;
+
+/// Outcome of a skill or command execution, stored in conversation history.
+///
+/// Used by `Message::Observation` to record whether an execution succeeded or failed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Outcome {
+    Success { output: String },
+    Failure { error: String },
+}
 
 /// A single message in the conversation history.
 ///
@@ -51,23 +60,71 @@ impl Message {
     }
 }
 
-/// Manages the ordered conversation message history.
-///
-/// Provides methods to append messages and export them
-/// in JSON format for LLM consumption.
+/// Manages the conversation state: skill catalog, message history, and token usage.
 ///
 /// # Fields
-/// - `messages`: Ordered list of conversation messages.
+/// - `skills`: Available skills loaded at initialization.
+/// - `messages`: Ordered conversation messages.
+/// - `total_tokens`: Cumulative token count from LLM API responses.
 pub struct Context {
+    skills: Vec<SkillMeta>,
     messages: Vec<Message>,
+    total_tokens: usize,
 }
 
 impl Context {
     /// Creates a new empty context.
     pub fn new() -> Self {
         Self {
+            skills: Vec::new(),
             messages: Vec::new(),
+            total_tokens: 0,
         }
+    }
+
+    /// Sets the available skills.
+    ///
+    /// # Arguments
+    /// - `skills`: Skill metadata discovered by the registry.
+    pub fn set_skills(&mut self, skills: Vec<SkillMeta>) {
+        self.skills = skills;
+    }
+
+    /// Returns the available skills.
+    pub fn skills(&self) -> &[SkillMeta] {
+        &self.skills
+    }
+
+    /// Looks up a skill by name.
+    ///
+    /// # Arguments
+    /// - `name`: The skill name to look up.
+    ///
+    /// # Returns
+    /// The skill metadata if found.
+    pub fn get_skill(&self, name: &str) -> Option<&SkillMeta> {
+        self.skills.iter().find(|s| s.name == name)
+    }
+
+    /// Updates the token count from the latest LLM API response.
+    ///
+    /// # Arguments
+    /// - `tokens`: Total token count reported by the API.
+    pub fn set_total_tokens(&mut self, tokens: usize) {
+        self.total_tokens = tokens;
+    }
+
+    /// Adds to the cumulative token count.
+    ///
+    /// # Arguments
+    /// - `tokens`: Token count to add.
+    pub fn add_total_tokens(&mut self, tokens: usize) {
+        self.total_tokens += tokens;
+    }
+
+    /// Returns the last known total token count.
+    pub fn total_tokens(&self) -> usize {
+        self.total_tokens
     }
 
     /// Appends a user message to the conversation history.
@@ -99,19 +156,7 @@ impl Context {
             Outcome::Success { output } => output.clone(),
             Outcome::Failure { error } => error.clone(),
         };
-        self.messages.push(Message::Observation {
-            skill,
-            outcome,
-            content,
-        });
-    }
-
-    /// Exports all messages as JSON for the LLM API.
-    ///
-    /// # Returns
-    /// A vector of JSON values representing the conversation history.
-    pub fn to_messages(&self) -> Vec<Value> {
-        self.messages.iter().map(|m| m.to_json()).collect()
+        self.messages.push(Message::Observation { skill, outcome, content });
     }
 
     /// Returns the number of messages in the conversation.

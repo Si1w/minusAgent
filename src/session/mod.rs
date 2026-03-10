@@ -1,21 +1,27 @@
 use crate::config::Config;
-use crate::core::agent::{Agent, AgentResult};
-use crate::core::context::Context;
+use crate::core::agent::Agent;
+use crate::core::context::{Context, Outcome};
+use crate::core::harness::Harness;
 use crate::core::llm::LLMClient;
-use crate::skill::registry::SkillRegistry;
+use crate::core::prompt::PromptEngine;
+use crate::core::{Action, Node};
+use crate::skill::SkillRegistry;
 
-/// Top-level orchestrator for a single agent interaction.
+/// Top-level orchestrator for a multi-turn conversation.
 ///
-/// Session coordinates Context, Agent, and SkillRegistry.
-/// It receives user input from the transport layer, drives the
-/// agent loop, and returns the final result.
+/// Session owns the context, agent, and harness. Each call to `turn()`
+/// processes one user message: drives the agent loop and dispatches
+/// `Execute` actions to the harness until the agent completes.
+/// Context persists across turns for the lifetime of the session.
 ///
 /// # Fields
-/// - `context`: The conversation message history.
-/// - `agent`: The ReAct loop agent.
+/// - `context`: The conversation message history (persists across turns).
+/// - `agent`: The ReAct agent that owns the reasoning loop.
+/// - `harness`: The command execution environment.
 pub struct Session {
     context: Context,
     agent: Agent,
+    harness: Harness,
 }
 
 impl Session {
@@ -35,32 +41,48 @@ impl Session {
             .ok_or("no LLM configured")?
             .clone();
 
-        let llm = LLMClient::new(llm_config)?;
+        let registry = SkillRegistry::new(&config.skills.paths)?;
 
-        let mut registry = SkillRegistry::new();
-        let mut search_paths = SkillRegistry::default_search_paths();
-        for p in &config.skills.paths {
-            search_paths.push(p.into());
-        }
-        registry.discover(&search_paths)?;
+        let prompt_engine = PromptEngine::new(String::new());
+        let llm = LLMClient::new(llm_config, prompt_engine)?;
+        let agent = Agent::new(llm, config.agent.max_steps);
 
-        let agent = Agent::new(llm, registry, config.agent.max_steps);
+        let mut context = Context::new();
+        context.set_skills(registry.skills());
 
         Ok(Self {
-            context: Context::new(),
+            context,
             agent,
+            harness: Harness::new(),
         })
     }
 
-    /// Sends a user message and runs the agent loop to produce a response.
+    /// Runs the session REPL: accepts user input, drives the agent loop,
+    /// and dispatches `Execute` actions to the harness until completion.
+    /// IO handling will be added later.
     ///
     /// # Arguments
     /// - `input`: The user's input text.
     ///
     /// # Returns
-    /// The agent's final answer, an error, or a max-steps notification.
-    pub async fn send(&mut self, input: String) -> AgentResult {
+    /// The final `Action` (typically `Completed`) for this turn.
+    pub async fn run(&mut self, input: String) -> Action {
         self.context.add_user_message(input);
-        self.agent.run(&mut self.context).await
+
+        loop {
+            match self.agent.run(&mut self.context).await {
+                Action::Execute { command } => {
+                    self.harness.set_command(command.clone());
+                    let result = self.harness.run(&mut self.context).await;
+                    if let Action::Completed { answer } = result {
+                        self.context.add_observation(
+                            command,
+                            Outcome::Failure { error: answer },
+                        );
+                    }
+                }
+                action => return action,
+            }
+        }
     }
 }

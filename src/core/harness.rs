@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use serde_json::Value;
 use tokio::process::Command;
 
 use crate::core::context::Context;
-use crate::core::{Node, Outcome};
+use crate::core::context::Outcome;
+use crate::core::{Action, Node};
 
 const BLOCKED_PATTERNS: &[&str] = &[
     "rm -rf /",
@@ -13,28 +15,20 @@ const BLOCKED_PATTERNS: &[&str] = &[
 
 /// Execution environment that runs shell commands through the Node pipeline.
 ///
-/// Harness is a pure executor — it receives a command string and runs it
-/// as a subprocess via `sh -c`. Skill resolution, command construction,
-/// and environment setup happen upstream (Session/Agent) or inside
-/// skill instructions.
-///
-/// Dangerous commands are blocked before execution.
+/// - **prep**: validates the command and checks for blocked patterns.
+/// - **exec**: spawns `sh -c` subprocess (pure compute, no shared access).
+/// - **post**: passes through the execution result.
 ///
 /// # Fields
 /// - `command`: The shell command string to execute.
-/// - `result`: The execution result, captured during exec.
 pub struct Harness {
     command: Option<String>,
-    result: Option<Outcome>,
 }
 
 impl Harness {
     /// Creates a new harness.
     pub fn new() -> Self {
-        Self {
-            command: None,
-            result: None,
-        }
+        Self { command: None }
     }
 
     /// Sets the command to execute in the next run.
@@ -43,11 +37,6 @@ impl Harness {
     /// - `command`: The shell command string (supports `&&`, `||`, pipes, etc.).
     pub fn set_command(&mut self, command: String) {
         self.command = Some(command);
-    }
-
-    /// Returns the result of the last execution.
-    pub fn result(&self) -> Option<&Outcome> {
-        self.result.as_ref()
     }
 }
 
@@ -69,57 +58,42 @@ fn check_blocked(command: &str) -> Option<&'static str> {
 #[async_trait]
 impl Node for Harness {
     /// Validates that a command is set and not blocked.
-    async fn prep(&mut self, _ctx: &Context) -> Outcome {
-        let command = match &self.command {
-            Some(c) => c,
-            None => return Outcome::Failure { error: "no command set".to_string() },
-        };
+    async fn prep(&mut self, _shared: &Context) -> Result<Value, String> {
+        let command = self.command.as_ref().ok_or("no command set")?;
 
         if let Some(pattern) = check_blocked(command) {
-            return Outcome::Failure {
-                error: format!("blocked command: '{}'", pattern),
-            };
+            return Err(format!("blocked command: '{}'", pattern));
         }
 
-        Outcome::Success { output: "ready".to_string() }
+        Ok(Value::String(command.clone()))
     }
 
     /// Spawns a subprocess to execute the command via `sh -c`.
-    async fn exec(&mut self, _ctx: &Context) -> Outcome {
-        let command = match &self.command {
-            Some(c) => c,
-            None => return Outcome::Failure { error: "no command set".to_string() },
-        };
+    async fn exec(&mut self, prep_res: Value) -> Result<Value, String> {
+        let command = prep_res.as_str().ok_or("prep_res is not a string")?;
 
         let output = Command::new("sh")
             .arg("-c")
             .arg(command)
             .output()
-            .await;
+            .await
+            .map_err(|e| format!("execution failed: {}", e))?;
 
-        let result = match output {
-            Ok(o) if o.status.success() => {
-                let stdout = String::from_utf8_lossy(&o.stdout).to_string();
-                Outcome::Success { output: stdout }
-            }
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr).to_string();
-                Outcome::Failure { error: stderr }
-            }
-            Err(e) => {
-                Outcome::Failure { error: format!("execution failed: {}", e) }
-            }
-        };
-
-        self.result = Some(result.clone());
-        result
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            Ok(Value::String(stdout))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(stderr)
+        }
     }
 
-    /// Returns the execution result as the final Outcome.
-    async fn post(&mut self, _ctx: &mut Context) -> Outcome {
-        self.result.clone().unwrap_or(Outcome::Failure {
-            error: "no result captured".to_string(),
-        })
+    /// Writes the execution result as an observation to shared context.
+    async fn post(&mut self, shared: &mut Context, _prep_res: Value, exec_res: Value) -> Action {
+        let command = self.command.take().unwrap_or_default();
+        let stdout = exec_res.as_str().unwrap_or_default().to_string();
+        shared.add_observation(command, Outcome::Success { output: stdout });
+        Action::Continue
     }
 }
 
@@ -155,8 +129,8 @@ mod tests {
     async fn test_run_no_command_set() {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_failure());
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Completed { .. }));
     }
 
     #[tokio::test]
@@ -164,10 +138,13 @@ mod tests {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
         harness.set_command("echo hello".to_string());
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_success());
-        if let Outcome::Success { output } = &outcome {
-            assert_eq!(output.trim(), "hello");
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Continue));
+        let last = ctx.messages().last().unwrap();
+        if let crate::core::context::Message::Observation { content, .. } = last {
+            assert_eq!(content.trim(), "hello");
+        } else {
+            panic!("expected Observation message");
         }
     }
 
@@ -176,8 +153,8 @@ mod tests {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
         harness.set_command("rm -rf /".to_string());
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_failure());
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Completed { .. }));
     }
 
     #[tokio::test]
@@ -185,8 +162,8 @@ mod tests {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
         harness.set_command("false".to_string());
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_failure());
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Completed { .. }));
     }
 
     #[tokio::test]
@@ -194,11 +171,14 @@ mod tests {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
         harness.set_command("echo foo && echo bar".to_string());
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_success());
-        if let Outcome::Success { output } = &outcome {
-            assert!(output.contains("foo"));
-            assert!(output.contains("bar"));
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Continue));
+        let last = ctx.messages().last().unwrap();
+        if let crate::core::context::Message::Observation { content, .. } = last {
+            assert!(content.contains("foo"));
+            assert!(content.contains("bar"));
+        } else {
+            panic!("expected Observation message");
         }
     }
 
@@ -207,10 +187,13 @@ mod tests {
         let mut harness = Harness::new();
         let mut ctx = Context::new();
         harness.set_command("echo hello world | wc -w".to_string());
-        let outcome = harness.run(&mut ctx).await;
-        assert!(outcome.is_success());
-        if let Outcome::Success { output } = &outcome {
-            assert_eq!(output.trim(), "2");
+        let action = harness.run(&mut ctx).await;
+        assert!(matches!(action, Action::Continue));
+        let last = ctx.messages().last().unwrap();
+        if let crate::core::context::Message::Observation { content, .. } = last {
+            assert_eq!(content.trim(), "2");
+        } else {
+            panic!("expected Observation message");
         }
     }
 }
