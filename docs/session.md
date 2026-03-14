@@ -9,7 +9,7 @@ A session is the top-level orchestrator for a multi-turn conversation. It coordi
 - **Harness**: Skill execution environment
 - **Config**: Configuration snapshot
 
-Session receives user input from the transport layer, drives the agent loop, and returns the final answer.
+Session receives user input from the transport layer, drives the agent loop, and emits progress events via callbacks.
 
 ## Context (Message History)
 
@@ -38,10 +38,10 @@ Context is responsible for:
    - `Execute` → return to Session
    - `Completed` → return to Session
    - `max_steps` reached → return `Completed { answer: "max steps reached" }`
-4. Session dispatches on the returned `Action`:
-   - `Execute` → run Harness (`Node::run()`), which writes observation to Context via `post()`, goto 3
-   - `Completed` → return answer to transport
-5. Session returns the final `Action` to transport
+4. Session dispatches on the returned `Action`, emitting `Event` callbacks:
+   - `Execute` → emit `Executing` → run Harness → emit `Output` → goto 3
+   - `Completed` → return answer string to transport
+5. Transport displays the answer
 
 ## Persistence (User-Triggered)
 

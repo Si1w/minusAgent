@@ -31,7 +31,7 @@ Each LLM step produces:
 |---|---|---|
 | **UseSkill** | `{"action": "use_skill", "skills": [{"skill": "name", "input": {...}}]}` | Load skill instructions into context, continue loop |
 | **Execute** | `{"action": "execute", "command": "shell command"}` | Return to Session for harness execution |
-| **Continue** | `{"action": "continue"}` | Pure thinking, loop again without side effects |
+| **Continue** | `{"action": "continue"}` | Insert synthetic user "continue" message, loop again |
 | **Completed** | `{"action": "completed", "answer": "final response"}` | Return answer to Session |
 
 - `skills[].input` is optional — omit when the skill needs no arguments.
@@ -54,11 +54,15 @@ Each LLM step produces:
 
 `Action` is the unified signal throughout the pipeline. The Agent does NOT own the Harness. Responsibility split:
 
-- **Agent handles internally**: `UseSkill` (load instructions via PromptEngine), `Continue` (loop)
+- **Agent handles internally**: `UseSkill` (load instructions via PromptEngine), `Continue` (insert synthetic user message, loop)
 - **Agent returns to Session**: `Execute`, `Completed` (including LLM errors and max steps)
 - **Session dispatches**: runs Harness (via `Node::run()`) for `Execute`, re-enters Agent loop
 
-`Agent::run()` drives the inner loop. `Session::run()` drives the REPL (Agent ↔ Harness dispatch per turn).
+`Agent::run()` drives the inner CoT loop. `Session::turn()` drives one orchestrator turn (Agent ↔ Harness dispatch). The REPL loop lives in the transport.
+
+## Continue & Message Ordering
+
+Many LLM APIs (Mistral, etc.) require the last message to be `user` or `tool` role. When the agent loops on `Continue`, the last context message is `assistant`. The agent inserts a synthetic `{"role": "user", "content": "continue"}` message to satisfy this constraint before the next LLM call.
 
 ## Termination Conditions
 

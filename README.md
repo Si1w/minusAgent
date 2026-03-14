@@ -2,11 +2,81 @@
 
 A general-purpose ReAct agent framework in Rust. All capabilities (tool use, MCP, custom instructions) are packaged as skills following the [Agent Skills Specification](https://agentskills.io/specification).
 
+## Quick Start
+
+### 1. Configure
+
+On first run, a default config is created at `~/.minusagent/config.json`. You can also configure interactively inside the REPL.
+
+Set your API key as an environment variable. Either export it directly:
+
+```bash
+export LLM_API_KEY="your-api-key"
+```
+
+Or create a `.env` file in the project directory (loaded automatically via `dotenvy`):
+
+```
+LLM_API_KEY=your-api-key
+```
+
+### 2. Run
+
+```bash
+cargo run
+```
+
+If the API key is missing or config is incomplete, the REPL still starts — use `/config` commands to fix it, then `/new` to create a session.
+
+### 3. Usage
+
+Type a message to chat with the agent. The agent thinks step-by-step (ReAct) and can execute shell commands when needed.
+
+#### REPL Commands
+
+| Command | Description |
+|---|---|
+| `/help` | Show available commands |
+| `/exit` | Exit the REPL |
+| `/new` | Start a new session (fresh context) |
+| `/skills` | List available skills |
+| `/switch <name>` | Switch to a different LLM (preserves context) |
+| `/config` | View current configuration |
+| `/config set <key> <value>` | Set a config field (dotted path, e.g. `agent.max_steps 30`) |
+| `/config add llm` | Add a new LLM provider (interactive) |
+| `/config remove llm <name>` | Remove an LLM provider by name |
+
+#### Example Session
+
+```
+> What is 15 + 27?
+[thinking] I need to calculate the sum of 15 and 27...
+
+42
+
+> /switch mistral-large
+Switched to 'mistral-large'. Session rebuilt.
+
+> /config set agent.max_steps 30
+Set agent.max_steps = 30
+```
+
+## Architecture
+
+Three nested loops drive the agent:
+
+```
+REPL loop (CLI transport)          ← read input → display answer → next turn
+└── Orchestrator loop (Session)    ← Agent ↔ Harness dispatch until Completed
+    └── CoT loop (Agent)           ← LLM calls, handles UseSkill/Continue internally,
+                                     returns Execute or Completed to Session
+```
+
 ## Module Plan
 
 ```
 src/
-├── main.rs              # CLI entry point
+├── main.rs              # CLI entry point (dotenvy, config load, REPL)
 ├── lib.rs               # Public API
 ├── core/
 │   ├── mod.rs           # Node trait, Action enum
@@ -16,13 +86,13 @@ src/
 │   ├── harness.rs       # Harness: command execution via Node pipeline
 │   └── llm.rs           # LLM client (structured output via Node pipeline)
 ├── session/
-│   └── mod.rs           # Session: REPL orchestrator for agent, context, harness
+│   └── mod.rs           # Session: orchestrator with Event callbacks for transports
 ├── skill/
 │   └── mod.rs           # SkillRegistry, SkillMeta, SKILL.md parser
 ├── config/
-│   └── mod.rs           # Config loading & management
+│   └── mod.rs           # Config: load, save, set, add/remove/promote LLM
 └── transport/
-    └── cli.rs           # CLI transport (MVP)
+    └── cli.rs           # CLI transport: REPL, slash commands, config management
 ```
 
 ## Implementation Phases
@@ -47,10 +117,14 @@ src/
 - [ ] Session persistence: JSONL event log, create/switch/list sessions
 
 ### Phase 4: CLI Transport
-- [ ] CLI transport: interactive REPL with session commands (`/new`, `/skills`, `/switch`)
+- [x] CLI transport: interactive REPL with `/help`, `/exit`, `/new`, `/skills`
+- [x] LLM switching: `/switch <name>` with context preservation
+- [x] Config management: `/config`, `/config set`, `/config add llm`, `/config remove llm`
+- [x] Graceful degradation: REPL starts even if session init fails (missing API key, etc.)
+- [x] `.env` auto-loading via `dotenvy`
+- [x] Event callbacks: `Thinking`, `Executing`, `Output` for transport display
 - [ ] Context inspection command (`/context` with usage bar, `/compact` manual compression)
 - [ ] Error handling: user interrupt (Ctrl+C) vs environment failure
-- [ ] Config CLI commands: view/edit config
 
 ### Phase 5: Intelligence — Bootstrap & Memory
 - [ ] Bootstrap loader: assemble system prompt from workspace `.md` files (SOUL, IDENTITY, TOOLS, USER, MEMORY, BOOTSTRAP)

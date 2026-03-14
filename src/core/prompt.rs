@@ -55,6 +55,7 @@ impl PromptEngine {
             "content": system,
         }));
         out.extend(ctx.messages().iter().map(|m| m.to_json()));
+
         out
     }
 

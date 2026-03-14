@@ -46,7 +46,9 @@ impl Agent {
                         self.llm.prompt_engine().load_skill(ctx, skill);
                     }
                 }
-                Action::Continue => {}
+                Action::Continue => {
+                    ctx.add_user_message("continue".to_string());
+                }
                 action => return action,
             }
         }
