@@ -110,6 +110,7 @@ impl Cli {
             "/exit" => return false,
             "/help" => self.cmd_help(),
             "/skills" => self.cmd_skills(),
+            "/models" => self.cmd_models(),
             "/new" => self.cmd_new(),
             "/switch" => self.cmd_switch(&parts[1..]),
             "/config" => self.cmd_config(&parts[1..]),
@@ -124,6 +125,7 @@ impl Cli {
         println!("  /exit                        Exit the REPL");
         println!("  /new                         Start a new session (fresh context)");
         println!("  /skills                      List available skills");
+        println!("  /models                      List configured LLMs");
         println!("  /switch <name>               Switch LLM and rebuild session");
         println!("  /config                      View current configuration");
         println!("  /config set <key> <value>    Set a config field (dotted path)");
@@ -147,6 +149,19 @@ impl Cli {
             for s in skills {
                 println!("  - {}: {}", s.name, s.description);
             }
+        }
+    }
+
+    /// Lists configured LLMs with active marker.
+    fn cmd_models(&self) {
+        if self.config.llm.is_empty() {
+            println!("No LLMs configured.");
+            return;
+        }
+        println!("Models:");
+        for (i, llm) in self.config.llm.iter().enumerate() {
+            let marker = if i == 0 { " (active)" } else { "" };
+            println!("  - {} ({}){}", llm.name, llm.model, marker);
         }
     }
 
@@ -264,6 +279,7 @@ impl Cli {
             api_key_env,
             max_tokens: 4096,
             context_window: 128_000,
+            reasoning_effort: None,
         };
 
         match self.config.add_llm(llm) {

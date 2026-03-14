@@ -28,7 +28,16 @@ cargo run
 
 If the API key is missing or config is incomplete, the REPL still starts — use `/config` commands to fix it, then `/new` to create a session.
 
-### 3. Usage
+### 3. Supported Models
+
+The agent uses `response_format: json_schema` for structured output. Only models that support this format are compatible:
+
+- **Mistral** (codestral, mistral-large, etc.)
+- **OpenAI** (gpt-4o, gpt-4o-mini, etc.)
+
+Models that only support `json_object` or plain text (e.g. doubao/volces) are **not yet supported**.
+
+### 4. Usage
 
 Type a message to chat with the agent. The agent thinks step-by-step (ReAct) and can execute shell commands when needed.
 
@@ -40,6 +49,7 @@ Type a message to chat with the agent. The agent thinks step-by-step (ReAct) and
 | `/exit` | Exit the REPL |
 | `/new` | Start a new session (fresh context) |
 | `/skills` | List available skills |
+| `/models` | List configured LLMs |
 | `/switch <name>` | Switch to a different LLM (preserves context) |
 | `/config` | View current configuration |
 | `/config set <key> <value>` | Set a config field (dotted path, e.g. `agent.max_steps 30`) |

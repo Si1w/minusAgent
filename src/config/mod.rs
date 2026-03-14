@@ -25,6 +25,8 @@ pub struct LLMConfig {
     pub max_tokens: u32,
     #[serde(default = "default_context_window")]
     pub context_window: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -63,6 +65,7 @@ impl Config {
                 api_key_env: "LLM_API_KEY".to_string(),
                 max_tokens: 4096,
                 context_window: 256_000,
+                reasoning_effort: None,
             }],
             skills: SkillsConfig::default(),
         };
@@ -137,9 +140,6 @@ impl Config {
             arr[idx] = parsed;
         } else {
             let obj = target.as_object_mut().ok_or("target is not an object")?;
-            if !obj.contains_key(*last) {
-                return Err(format!("field '{}' not found", last));
-            }
             obj.insert(last.to_string(), parsed);
         }
 
@@ -285,6 +285,7 @@ mod tests {
             api_key_env: "NONEXISTENT_VAR_12345".to_string(),
             max_tokens: 4096,
             context_window: 128_000,
+            reasoning_effort: None,
         };
         assert!(config.api_key().is_err());
     }
@@ -306,6 +307,7 @@ mod tests {
                     api_key_env: "KEY_A".to_string(),
                     max_tokens: 4096,
                     context_window: 128_000,
+                    reasoning_effort: None,
                 },
                 LLMConfig {
                     name: "b".to_string(),
@@ -314,6 +316,7 @@ mod tests {
                     api_key_env: "KEY_B".to_string(),
                     max_tokens: 4096,
                     context_window: 128_000,
+                    reasoning_effort: None,
                 },
             ],
             skills: SkillsConfig::default(),
@@ -340,6 +343,7 @@ mod tests {
             api_key_env: "KEY_C".to_string(),
             max_tokens: 4096,
             context_window: 128_000,
+            reasoning_effort: None,
         };
         // add_llm calls save(), so just test in-memory mutation
         config.llm.push(llm);

@@ -180,7 +180,7 @@ impl LLMClient {
     /// # Returns
     /// A tuple of the parsed `LLMResponse` and the total token count from the API.
     pub async fn chat(&self, messages: &[Value]) -> Result<(LLMResponse, usize), String> {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
             "messages": messages,
@@ -193,6 +193,10 @@ impl LLMClient {
                 }
             },
         });
+
+        if let Some(effort) = &self.config.reasoning_effort {
+            body["reasoning_effort"] = serde_json::json!(effort);
+        }
 
         let (data, total_tokens) = self.send_request(&body).await?;
 

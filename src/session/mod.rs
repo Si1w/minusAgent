@@ -166,6 +166,7 @@ mod tests {
                 api_key_env: "LLM_API_KEY".to_string(),
                 max_tokens: 1024,
                 context_window: 25_600,
+                reasoning_effort: None,
             }],
             skills: SkillsConfig::default(),
         }
@@ -204,6 +205,7 @@ mod tests {
                 api_key_env: "NONEXISTENT_KEY_99999".to_string(),
                 max_tokens: 1024,
                 context_window: 25_600,
+                reasoning_effort: None,
             }],
             skills: SkillsConfig::default(),
         };
